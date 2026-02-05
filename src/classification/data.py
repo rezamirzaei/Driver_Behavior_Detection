@@ -136,6 +136,11 @@ def extract_raw_features(trip_path: Path) -> Dict[str, float]:
         features['speed_std'] = gps['speed'].std()
         features['speed_max'] = gps['speed'].max()
         features['speed_min'] = gps['speed'].min()
+        features['speed_range'] = gps['speed'].max() - gps['speed'].min()
+        features['speed_q25'] = gps['speed'].quantile(0.25)
+        features['speed_q75'] = gps['speed'].quantile(0.75)
+        speed_mean = gps['speed'].mean()
+        features['speed_cv'] = (gps['speed'].std() / speed_mean) if speed_mean > 0 else 0.0
         features['speed_change_mean'] = gps['speed'].diff().abs().mean()
         features['speed_change_std'] = gps['speed'].diff().abs().std()
         features['course_change_mean'] = gps['course'].diff().abs().mean()
@@ -148,8 +153,12 @@ def extract_raw_features(trip_path: Path) -> Dict[str, float]:
     if acc is not None and len(acc) > 1:
         features['acc_x_mean'] = acc['acc_x_kf'].mean()
         features['acc_x_std'] = acc['acc_x_kf'].std()
+        features['acc_x_range'] = acc['acc_x_kf'].max() - acc['acc_x_kf'].min()
         features['acc_y_mean'] = acc['acc_y_kf'].mean()
         features['acc_y_std'] = acc['acc_y_kf'].std()
+        features['acc_y_range'] = acc['acc_y_kf'].max() - acc['acc_y_kf'].min()
+        features['acc_z_mean'] = acc['acc_z_kf'].mean()
+        features['acc_z_std'] = acc['acc_z_kf'].std()
 
         # Magnitude
         mag = compute_acceleration_magnitude(
@@ -160,10 +169,20 @@ def extract_raw_features(trip_path: Path) -> Dict[str, float]:
         features['acc_magnitude_mean'] = mag.mean()
         features['acc_magnitude_std'] = mag.std()
         features['acc_magnitude_max'] = mag.max()
+        features['acc_magnitude_q95'] = float(np.percentile(mag, 95))
+
+        # RMS acceleration (energy measure)
+        features['acc_rms'] = float(np.sqrt(np.mean(mag ** 2)))
 
         # Jerk (rate of acceleration change)
-        features['jerk_x_std'] = acc['acc_x_kf'].diff().std()
-        features['jerk_y_std'] = acc['acc_y_kf'].diff().std()
+        jerk_x = acc['acc_x_kf'].diff()
+        jerk_y = acc['acc_y_kf'].diff()
+        features['jerk_x_mean'] = jerk_x.abs().mean()
+        features['jerk_x_std'] = jerk_x.std()
+        features['jerk_y_mean'] = jerk_y.abs().mean()
+        features['jerk_y_std'] = jerk_y.std()
+        jerk_mag = np.sqrt(jerk_x ** 2 + jerk_y ** 2)
+        features['jerk_magnitude_std'] = jerk_mag.std()
 
         # Event-like features from thresholds
         features['brake_count'] = (acc['acc_x_kf'] < -0.1).sum()
@@ -171,6 +190,15 @@ def extract_raw_features(trip_path: Path) -> Dict[str, float]:
         features['accel_count'] = (acc['acc_x_kf'] > 0.1).sum()
         features['turn_count'] = (acc['acc_y_kf'].abs() > 0.1).sum()
         features['sharp_turn_count'] = (acc['acc_y_kf'].abs() > 0.3).sum()
+
+        # Normalized event rates (events per second)
+        duration = features.get('trip_duration', 0)
+        if duration > 0:
+            features['brake_rate'] = features['brake_count'] / duration
+            features['turn_rate'] = features['turn_count'] / duration
+        else:
+            features['brake_rate'] = 0.0
+            features['turn_rate'] = 0.0
 
     # NOTE: We intentionally DO NOT use event features from EVENTS_INERTIAL.txt
     # (event_braking_low, event_braking_medium, event_braking_high, etc.)
