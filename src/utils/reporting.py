@@ -384,3 +384,75 @@ def print_sparse_model_results(
     print(f"   {metric_name}: {metric_value:.4f}")
 
 
+def print_feature_overview(
+    df: pd.DataFrame,
+    target_col: str = "comb08",
+) -> pd.DataFrame:
+    """
+    Print an overview of features with descriptive statistics and
+    modelling decisions.
+
+    Args:
+        df: DataFrame (features + target).
+        target_col: Name of the target column.
+
+    Returns:
+        Summary DataFrame with one row per feature.
+    """
+    feature_cols = [c for c in df.columns if c != target_col]
+    rows: list = []
+
+    for col in feature_cols:
+        dtype = str(df[col].dtype)
+        n_unique = int(df[col].nunique())
+        missing = int(df[col].isna().sum())
+        missing_pct = missing / len(df) * 100
+
+        if pd.api.types.is_numeric_dtype(df[col]):
+            kind = "numerical"
+            corr = df[col].corr(df[target_col]) if target_col in df.columns else np.nan
+        else:
+            kind = "categorical"
+            corr = np.nan
+
+        # Decision logic
+        if missing_pct > 50:
+            decision = "Drop (>50% missing)"
+        elif kind == "categorical" and n_unique > 50:
+            decision = "Target encode (high cardinality)"
+        elif kind == "categorical":
+            decision = "One-hot / Target encode"
+        elif not np.isnan(corr) and abs(corr) > 0.9:
+            decision = "Keep (strong predictor)"
+        elif not np.isnan(corr) and abs(corr) > 0.5:
+            decision = "Keep (moderate predictor)"
+        elif not np.isnan(corr) and abs(corr) < 0.05:
+            decision = "Consider dropping (weak)"
+        else:
+            decision = "Keep"
+
+        rows.append({
+            "Feature": col,
+            "Type": kind,
+            "Unique": n_unique,
+            "Missing%": round(missing_pct, 1),
+            "Corr(target)": round(corr, 3) if not np.isnan(corr) else "—",
+            "Decision": decision,
+        })
+
+    summary = pd.DataFrame(rows)
+
+    print_header("FEATURE OVERVIEW", "🔎")
+    print(f"  Total features: {len(feature_cols)}")
+    n_num = sum(1 for r in rows if r["Type"] == "numerical")
+    n_cat = sum(1 for r in rows if r["Type"] == "categorical")
+    print(f"  Numerical: {n_num}  |  Categorical: {n_cat}")
+
+    n_drop = sum(1 for r in rows if r["Decision"].startswith("Drop"))
+    n_strong = sum(1 for r in rows if "strong" in r["Decision"])
+    print(f"  Strong predictors: {n_strong}  |  Candidates to drop: {n_drop}")
+    print()
+    print(summary.to_string(index=False))
+
+    return summary
+

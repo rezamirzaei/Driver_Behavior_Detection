@@ -33,6 +33,7 @@ from src.utils.reporting import (
     # Advanced
     print_prediction_interval_results,
     print_sparse_model_results,
+    print_feature_overview,
 )
 
 __all__ = [
@@ -68,5 +69,6 @@ __all__ = [
     # Advanced
     "print_prediction_interval_results",
     "print_sparse_model_results",
+    "print_feature_overview",
 ]
 
