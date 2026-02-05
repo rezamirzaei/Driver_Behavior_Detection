@@ -12,6 +12,64 @@ from sklearn.compose import ColumnTransformer
 from src.core.schemas import SplitData, FeatureSet
 
 
+def engineer_regression_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create engineered features for regression on the EPA fuel economy dataset.
+
+    Adds interaction terms, ratios, and categorical flags that capture
+    domain-specific relationships between vehicle characteristics and fuel
+    economy.  Works on a copy of the input DataFrame so the original is
+    not mutated.
+
+    Args:
+        df: DataFrame with raw EPA features (must contain at least
+            ``displ`` and ``cylinders`` columns; other columns are
+            optional).
+
+    Returns:
+        DataFrame with original columns plus new engineered columns.
+    """
+    df = df.copy()
+
+    # --- Interaction / ratio features ---
+    if "displ" in df.columns and "cylinders" in df.columns:
+        cyl = df["cylinders"].replace(0, np.nan)
+        df["displ_per_cyl"] = df["displ"] / cyl
+        df["displ_x_cyl"] = df["displ"] * df["cylinders"]
+
+    if "displ" in df.columns:
+        df["displ_squared"] = df["displ"] ** 2
+
+    # --- Range features ---
+    if "rangeCity" in df.columns and "rangeHwy" in df.columns:
+        total = df["rangeCity"] + df["rangeHwy"]
+        total_safe = total.replace(0, np.nan)
+        df["range_total"] = total
+        df["range_city_ratio"] = df["rangeCity"] / total_safe
+
+    # --- Binary indicator flags ---
+    for col, flag in [
+        ("sCharger", "has_supercharger"),
+        ("tCharger", "has_turbocharger"),
+        ("evMotor", "is_electric"),
+        ("startStop", "has_start_stop"),
+        ("guzzler", "is_guzzler"),
+    ]:
+        if col in df.columns:
+            df[flag] = (df[col].notna() & (df[col] != "") & (df[col] != "N")).astype(int)
+
+    if "has_supercharger" in df.columns and "has_turbocharger" in df.columns:
+        df["is_forced_induction"] = (
+            (df["has_supercharger"] == 1) | (df["has_turbocharger"] == 1)
+        ).astype(int)
+
+    # --- Year-based feature ---
+    if "year" in df.columns:
+        df["vehicle_age"] = df["year"].max() - df["year"]
+
+    return df
+
+
 def encode_and_scale(
     X_train: pd.DataFrame,
     X_test: pd.DataFrame,

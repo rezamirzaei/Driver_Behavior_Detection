@@ -6,6 +6,7 @@ from src.features.preprocessing import (
     TargetEncoder,
     encode_target,
     encode_and_scale,
+    engineer_regression_features,
 )
 
 from src.features.analysis import (
@@ -32,6 +33,7 @@ __all__ = [
     "TargetEncoder",
     "encode_target",
     "encode_and_scale",
+    "engineer_regression_features",
     # Analysis
     "analyze_outliers",
     "analyze_outliers_dataframe",
