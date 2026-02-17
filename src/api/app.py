@@ -3,12 +3,13 @@
 import base64
 import io
 import logging
+import pathlib
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402 – must follow matplotlib.use()
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -142,7 +143,8 @@ def _load_data() -> None:
 # Lifespan
 # ---------------------------------------------------------------------------
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # noqa: ARG001
+async def lifespan(app: FastAPI):  # noqa: ARG001 – required by FastAPI lifespan protocol
+    """FastAPI lifespan handler: load dataset on startup."""
     try:
         _load_data()
     except Exception:
@@ -169,9 +171,7 @@ app.add_middleware(
 )
 
 # Static files for the AngularJS frontend
-import pathlib as _pathlib  # noqa: E402
-
-_static_dir = _pathlib.Path(__file__).resolve().parent / "static"
+_static_dir = pathlib.Path(__file__).resolve().parent / "static"
 if _static_dir.is_dir():
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
