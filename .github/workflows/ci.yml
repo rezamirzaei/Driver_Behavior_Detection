@@ -20,6 +20,9 @@ on:
       - 'docker-compose.yml'
       - '.github/workflows/ci.yml'
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint
