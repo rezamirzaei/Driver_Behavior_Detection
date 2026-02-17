@@ -31,17 +31,16 @@ def test_classification_pipeline():
 
     split = split_data(dataset, test_size=0.2, stratify=True)
 
-    from src.features import preprocess_features, encode_target
+    from src.features import encode_target, preprocess_features
 
     train_feat, test_feat = preprocess_features(split, scaler_type="robust")
     y_train, y_test, encoder = encode_target(split.y_train, split.y_test)
 
     from sklearn.ensemble import RandomForestClassifier
-    from src.models import train_model, evaluate_classifier
 
-    rf = RandomForestClassifier(
-        n_estimators=50, random_state=42, class_weight="balanced"
-    )
+    from src.models import evaluate_classifier, train_model
+
+    rf = RandomForestClassifier(n_estimators=50, random_state=42, class_weight="balanced")
     trained = train_model(
         train_feat.X,
         y_train,
@@ -51,9 +50,7 @@ def test_classification_pipeline():
         y_val=y_test,
     )
 
-    metrics = evaluate_classifier(
-        trained.model, test_feat.X, y_test, list(encoder.classes_)
-    )
+    metrics = evaluate_classifier(trained.model, test_feat.X, y_test, list(encoder.classes_))
 
     # Smoke assertions: not about hitting a specific metric, but ensuring
     # the pipeline produces sensible outputs.

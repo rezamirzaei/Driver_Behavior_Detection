@@ -7,27 +7,26 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, clone
-from sklearn.linear_model import (
-    LogisticRegression,
-    LinearRegression,
-    HuberRegressor,
-    RANSACRegressor,
-    Lasso,
-    Ridge,
-    ElasticNet,
-)
 from sklearn.ensemble import (
-    RandomForestClassifier,
-    RandomForestRegressor,
     GradientBoostingClassifier,
     GradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
 )
-from sklearn.svm import SVC, SVR, LinearSVC, LinearSVR
+from sklearn.linear_model import (
+    ElasticNet,
+    HuberRegressor,
+    Lasso,
+    LinearRegression,
+    LogisticRegression,
+    Ridge,
+)
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.svm import SVC, SVR, LinearSVC, LinearSVR
 
 from src.core.schemas import ModelComparison
-from src.models.trainer import train_model
 from src.models.evaluation import evaluate_classifier, evaluate_regressor
+from src.models.trainer import train_model
 
 
 def get_classifiers(
@@ -46,51 +45,37 @@ def get_classifiers(
     return {
         # Linear models
         "Logistic (L2)": LogisticRegression(
-            penalty='l2', class_weight=class_weight, max_iter=1000, random_state=random_state
+            penalty="l2", class_weight=class_weight, max_iter=1000, random_state=random_state
         ),
         "Logistic (L1 Sparse)": LogisticRegression(
-            penalty='l1', solver='saga', class_weight=class_weight,
-            max_iter=1000, random_state=random_state
+            penalty="l1", solver="saga", class_weight=class_weight, max_iter=1000, random_state=random_state
         ),
         "Logistic (ElasticNet)": LogisticRegression(
-            penalty='elasticnet', solver='saga', l1_ratio=0.5,
-            class_weight=class_weight, max_iter=1000, random_state=random_state
+            penalty="elasticnet",
+            solver="saga",
+            l1_ratio=0.5,
+            class_weight=class_weight,
+            max_iter=1000,
+            random_state=random_state,
         ),
         # SVM variants
         "SVM (Linear L1)": LinearSVC(
-            penalty='l1', dual=False, class_weight=class_weight,
-            max_iter=2000, random_state=random_state
+            penalty="l1", dual=False, class_weight=class_weight, max_iter=2000, random_state=random_state
         ),
-        "SVM (Linear L2)": LinearSVC(
-            penalty='l2', class_weight=class_weight,
-            max_iter=2000, random_state=random_state
-        ),
-        "SVM (RBF Kernel)": SVC(
-            kernel='rbf', class_weight=class_weight,
-            random_state=random_state, probability=True
-        ),
+        "SVM (Linear L2)": LinearSVC(penalty="l2", class_weight=class_weight, max_iter=2000, random_state=random_state),
+        "SVM (RBF Kernel)": SVC(kernel="rbf", class_weight=class_weight, random_state=random_state, probability=True),
         "SVM (Poly Kernel)": SVC(
-            kernel='poly', degree=3, class_weight=class_weight,
-            random_state=random_state, probability=True
+            kernel="poly", degree=3, class_weight=class_weight, random_state=random_state, probability=True
         ),
         # KNN variants (different k values and distance metrics)
-        "KNN (k=3)": KNeighborsClassifier(
-            n_neighbors=3, weights='uniform', metric='euclidean', n_jobs=-1
-        ),
-        "KNN (k=5, weighted)": KNeighborsClassifier(
-            n_neighbors=5, weights='distance', metric='euclidean', n_jobs=-1
-        ),
-        "KNN (k=7, manhattan)": KNeighborsClassifier(
-            n_neighbors=7, weights='distance', metric='manhattan', n_jobs=-1
-        ),
+        "KNN (k=3)": KNeighborsClassifier(n_neighbors=3, weights="uniform", metric="euclidean", n_jobs=-1),
+        "KNN (k=5, weighted)": KNeighborsClassifier(n_neighbors=5, weights="distance", metric="euclidean", n_jobs=-1),
+        "KNN (k=7, manhattan)": KNeighborsClassifier(n_neighbors=7, weights="distance", metric="manhattan", n_jobs=-1),
         # Ensemble
         "Random Forest": RandomForestClassifier(
-            n_estimators=100, max_depth=10, class_weight=class_weight,
-            random_state=random_state, n_jobs=-1
+            n_estimators=100, max_depth=10, class_weight=class_weight, random_state=random_state, n_jobs=-1
         ),
-        "Gradient Boosting": GradientBoostingClassifier(
-            n_estimators=100, max_depth=5, random_state=random_state
-        ),
+        "Gradient Boosting": GradientBoostingClassifier(n_estimators=100, max_depth=5, random_state=random_state),
     }
 
 
@@ -117,24 +102,14 @@ def get_regressors(random_state: int = 42) -> Dict[str, BaseEstimator]:
         "Huber (Robust)": HuberRegressor(epsilon=1.35, max_iter=1000),
         # SVM
         "SVR (Linear)": LinearSVR(epsilon=0.1, max_iter=2000, random_state=random_state),
-        "SVR (RBF Kernel)": SVR(kernel='rbf', C=1.0, epsilon=0.1),
+        "SVR (RBF Kernel)": SVR(kernel="rbf", C=1.0, epsilon=0.1),
         # KNN variants (different k values and distance metrics)
-        "KNN (k=3)": KNeighborsRegressor(
-            n_neighbors=3, weights='uniform', metric='euclidean', n_jobs=-1
-        ),
-        "KNN (k=5, weighted)": KNeighborsRegressor(
-            n_neighbors=5, weights='distance', metric='euclidean', n_jobs=-1
-        ),
-        "KNN (k=7, manhattan)": KNeighborsRegressor(
-            n_neighbors=7, weights='distance', metric='manhattan', n_jobs=-1
-        ),
+        "KNN (k=3)": KNeighborsRegressor(n_neighbors=3, weights="uniform", metric="euclidean", n_jobs=-1),
+        "KNN (k=5, weighted)": KNeighborsRegressor(n_neighbors=5, weights="distance", metric="euclidean", n_jobs=-1),
+        "KNN (k=7, manhattan)": KNeighborsRegressor(n_neighbors=7, weights="distance", metric="manhattan", n_jobs=-1),
         # Ensemble
-        "Random Forest": RandomForestRegressor(
-            n_estimators=100, max_depth=15, random_state=random_state, n_jobs=-1
-        ),
-        "Gradient Boosting": GradientBoostingRegressor(
-            n_estimators=100, max_depth=5, random_state=random_state
-        ),
+        "Random Forest": RandomForestRegressor(n_estimators=100, max_depth=15, random_state=random_state, n_jobs=-1),
+        "Gradient Boosting": GradientBoostingRegressor(n_estimators=100, max_depth=5, random_state=random_state),
     }
 
 
@@ -149,15 +124,9 @@ def get_knn_classifiers() -> Dict[str, BaseEstimator]:
         - Distance metrics (euclidean, manhattan)
     """
     return {
-        "KNN (k=3)": KNeighborsClassifier(
-            n_neighbors=3, weights='uniform', metric='euclidean', n_jobs=-1
-        ),
-        "KNN (k=5, weighted)": KNeighborsClassifier(
-            n_neighbors=5, weights='distance', metric='euclidean', n_jobs=-1
-        ),
-        "KNN (k=7, manhattan)": KNeighborsClassifier(
-            n_neighbors=7, weights='distance', metric='manhattan', n_jobs=-1
-        ),
+        "KNN (k=3)": KNeighborsClassifier(n_neighbors=3, weights="uniform", metric="euclidean", n_jobs=-1),
+        "KNN (k=5, weighted)": KNeighborsClassifier(n_neighbors=5, weights="distance", metric="euclidean", n_jobs=-1),
+        "KNN (k=7, manhattan)": KNeighborsClassifier(n_neighbors=7, weights="distance", metric="manhattan", n_jobs=-1),
     }
 
 
@@ -172,15 +141,9 @@ def get_knn_regressors() -> Dict[str, BaseEstimator]:
         - Distance metrics (euclidean, manhattan)
     """
     return {
-        "KNN (k=3)": KNeighborsRegressor(
-            n_neighbors=3, weights='uniform', metric='euclidean', n_jobs=-1
-        ),
-        "KNN (k=5, weighted)": KNeighborsRegressor(
-            n_neighbors=5, weights='distance', metric='euclidean', n_jobs=-1
-        ),
-        "KNN (k=7, manhattan)": KNeighborsRegressor(
-            n_neighbors=7, weights='distance', metric='manhattan', n_jobs=-1
-        ),
+        "KNN (k=3)": KNeighborsRegressor(n_neighbors=3, weights="uniform", metric="euclidean", n_jobs=-1),
+        "KNN (k=5, weighted)": KNeighborsRegressor(n_neighbors=5, weights="distance", metric="euclidean", n_jobs=-1),
+        "KNN (k=7, manhattan)": KNeighborsRegressor(n_neighbors=7, weights="distance", metric="manhattan", n_jobs=-1),
     }
 
 
@@ -218,23 +181,22 @@ def compare_classifiers(
         print(f"Training {name}...")
 
         trained = train_model(
-            X_train, y_train,
-            clone(model), name,
-            X_val=X_test, y_val=y_test,
-            feature_names=feature_names
+            X_train, y_train, clone(model), name, X_val=X_test, y_val=y_test, feature_names=feature_names
         )
 
         metrics = evaluate_classifier(trained.model, X_test, y_test, class_names)
         trained.test_metrics = metrics
 
-        results.append({
-            "Model": name,
-            "Accuracy": metrics.accuracy,
-            "Balanced Accuracy": metrics.balanced_accuracy,
-            "Precision": metrics.precision,
-            "Recall": metrics.recall,
-            "F1 Score": metrics.f1_score,
-        })
+        results.append(
+            {
+                "Model": name,
+                "Accuracy": metrics.accuracy,
+                "Balanced Accuracy": metrics.balanced_accuracy,
+                "Precision": metrics.precision,
+                "Recall": metrics.recall,
+                "F1 Score": metrics.f1_score,
+            }
+        )
 
         trained_models[name] = trained
 
@@ -242,10 +204,7 @@ def compare_classifiers(
     best_model_name = results_df.iloc[0]["Model"]
 
     return ModelComparison(
-        results=results_df,
-        trained_models=trained_models,
-        best_model_name=best_model_name,
-        metric_used="F1 Score"
+        results=results_df, trained_models=trained_models, best_model_name=best_model_name, metric_used="F1 Score"
     )
 
 
@@ -282,22 +241,21 @@ def compare_regressors(
 
         try:
             trained = train_model(
-                X_train, y_train,
-                clone(model), name,
-                X_val=X_test, y_val=y_test,
-                feature_names=feature_names
+                X_train, y_train, clone(model), name, X_val=X_test, y_val=y_test, feature_names=feature_names
             )
 
             metrics = evaluate_regressor(trained.model, X_test, y_test)
             trained.test_metrics = metrics
 
-            results.append({
-                "Model": name,
-                "RMSE": metrics.rmse,
-                "MAE": metrics.mae,
-                "R²": metrics.r2,
-                "MAPE (%)": metrics.mape,
-            })
+            results.append(
+                {
+                    "Model": name,
+                    "RMSE": metrics.rmse,
+                    "MAE": metrics.mae,
+                    "R²": metrics.r2,
+                    "MAPE (%)": metrics.mape,
+                }
+            )
 
             trained_models[name] = trained
 
@@ -309,8 +267,5 @@ def compare_regressors(
     best_model_name = results_df.iloc[0]["Model"]
 
     return ModelComparison(
-        results=results_df,
-        trained_models=trained_models,
-        best_model_name=best_model_name,
-        metric_used="R²"
+        results=results_df, trained_models=trained_models, best_model_name=best_model_name, metric_used="R²"
     )

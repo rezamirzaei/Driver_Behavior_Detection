@@ -1,19 +1,19 @@
 """Tests for models module."""
 
-import pytest
-import numpy as np
-import sys
 from pathlib import Path
+import sys
+
+import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor
-from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from src.core.schemas import TrainedModel, TrainingHistory
-from src.models.trainer import ModelTrainer, train_model
-from src.models.evaluation import evaluate_classifier, evaluate_regressor
+from src.core.schemas import TrainedModel
 from src.models.comparison import get_classifiers, get_regressors
+from src.models.evaluation import evaluate_classifier, evaluate_regressor
+from src.models.trainer import train_model
 
 
 class TestModelTrainer:
@@ -65,10 +65,7 @@ class TestModelTrainer:
         X_train, y_train, X_test, y_test = classification_data
 
         model = LogisticRegression()
-        trained = train_model(
-            X_train, y_train, model, "LogReg",
-            X_val=X_test, y_val=y_test
-        )
+        trained = train_model(X_train, y_train, model, "LogReg", X_val=X_test, y_val=y_test)
 
         assert len(trained.history.val_scores) > 0
 

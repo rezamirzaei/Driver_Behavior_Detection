@@ -2,15 +2,16 @@
 Core data structures using Pydantic for type-safe data handling.
 """
 
-from typing import List, Dict, Optional, Any, Literal, Tuple
 from enum import Enum
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DrivingBehavior(str, Enum):
     """Driving behavior categories."""
+
     NORMAL = "NORMAL"
     AGGRESSIVE = "AGGRESSIVE"
     DROWSY = "DROWSY"
@@ -18,12 +19,14 @@ class DrivingBehavior(str, Enum):
 
 class RoadType(str, Enum):
     """Road type categories."""
+
     MOTORWAY = "MOTORWAY"
     SECONDARY = "SECONDARY"
 
 
 class DatasetInfo(BaseModel):
     """Metadata about a loaded dataset."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = Field(..., description="Dataset name")
@@ -52,6 +55,7 @@ class DatasetInfo(BaseModel):
 
 class Dataset(BaseModel):
     """Container for a dataset with features and target."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     X: Any = Field(..., description="Feature matrix")
@@ -62,17 +66,18 @@ class Dataset(BaseModel):
 
     @property
     def n_samples(self) -> int:
-        return len(self.y)
+        return int(len(self.y))
 
     @property
     def n_features(self) -> int:
-        if hasattr(self.X, 'shape') and len(self.X.shape) > 1:
-            return self.X.shape[1]
+        if hasattr(self.X, "shape") and len(self.X.shape) > 1:
+            return int(self.X.shape[1])
         return len(self.feature_names)
 
 
 class SplitData(BaseModel):
     """Container for train/test split data."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     X_train: Any = Field(...)
@@ -84,15 +89,16 @@ class SplitData(BaseModel):
 
     @property
     def n_train(self) -> int:
-        return len(self.y_train)
+        return int(len(self.y_train))
 
     @property
     def n_test(self) -> int:
-        return len(self.y_test)
+        return int(len(self.y_test))
 
 
 class FeatureSet(BaseModel):
     """Container for extracted/preprocessed features."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     X: Any = Field(...)
@@ -102,13 +108,14 @@ class FeatureSet(BaseModel):
 
     @property
     def n_features(self) -> int:
-        if hasattr(self.X, 'shape') and len(self.X.shape) > 1:
-            return self.X.shape[1]
+        if hasattr(self.X, "shape") and len(self.X.shape) > 1:
+            return int(self.X.shape[1])
         return len(self.feature_names)
 
 
 class OutlierAnalysisResult(BaseModel):
     """Result of outlier analysis using IQR method."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     column: str = Field(..., description="Column analyzed")
@@ -126,22 +133,22 @@ class OutlierAnalysisResult(BaseModel):
 
 class CorrelationAnalysisResult(BaseModel):
     """Result of correlation analysis."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     correlation_matrix: Any = Field(..., description="Correlation matrix as DataFrame")
     high_correlation_pairs: List[Tuple[str, str, float]] = Field(
-        default_factory=list,
-        description="List of (feature1, feature2, correlation) with |r| > threshold"
+        default_factory=list, description="List of (feature1, feature2, correlation) with |r| > threshold"
     )
     target_correlations: Optional[Dict[str, float]] = Field(
-        default=None,
-        description="Correlations with target variable"
+        default=None, description="Correlations with target variable"
     )
     multicollinearity_warning: bool = Field(default=False, description="True if severe multicollinearity detected")
 
 
 class ClassDistributionResult(BaseModel):
     """Result of class distribution analysis."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     counts: Dict[str, int] = Field(..., description="Counts per class")
@@ -153,6 +160,7 @@ class ClassDistributionResult(BaseModel):
 
 class FeatureStatisticsResult(BaseModel):
     """Statistics for a single feature."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = Field(..., description="Feature name")
@@ -168,6 +176,7 @@ class FeatureStatisticsResult(BaseModel):
 
 class DataQualityReport(BaseModel):
     """Comprehensive data quality report."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     n_samples: int = Field(..., ge=0)
@@ -183,7 +192,7 @@ class DataQualityReport(BaseModel):
     def summary(self) -> str:
         """Return formatted summary."""
         lines = [
-            f"📊 Data Quality Report",
+            "📊 Data Quality Report",
             f"   Samples: {self.n_samples:,}",
             f"   Features: {self.n_features} ({self.n_numerical} numerical, {self.n_categorical} categorical)",
         ]
@@ -203,6 +212,7 @@ class ScoreMappingInfo(BaseModel):
     The UAH-DriveSet uses the DriveSafe app which computes behavioral scores
     from raw accelerometer and GPS data. This class documents that mapping.
     """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     description: str = Field(
@@ -218,9 +228,9 @@ The scores are computed by the DriveSafe iOS app from accelerometer data:
 
 2. **Event Detection** (from SEMANTIC_FINAL.txt):
    - Low/Medium/High Accelerations (Lacc, Macc, Hacc)
-   - Low/Medium/High Brakings (Lbra, Mbra, Hbra)  
+   - Low/Medium/High Brakings (Lbra, Mbra, Hbra)
    - Low/Medium/High Turnings (Ltur, Mtur, Htur)
-   
+
    Events are classified by acceleration magnitude thresholds:
    - Low: 0.2-0.5g
    - Medium: 0.5-0.8g
@@ -248,7 +258,7 @@ The scores are computed by the DriveSafe iOS app from accelerometer data:
    which represent the complete trip statistics.
    This avoids fixed-window assumptions for variable trip lengths.
 """,
-        description="Detailed explanation of score mapping"
+        description="Detailed explanation of score mapping",
     )
 
     score_features: List[str] = Field(
@@ -260,32 +270,24 @@ The scores are computed by the DriveSafe iOS app from accelerometer data:
             "score_weaving",
             "score_drifting",
             "score_overspeeding",
-            "score_following"
+            "score_following",
         ],
-        description="Score features (0-100 scale)"
+        description="Score features (0-100 scale)",
     )
 
     ratio_features: List[str] = Field(
-        default=[
-            "ratio_normal",
-            "ratio_drowsy",
-            "ratio_aggressive"
-        ],
-        description="Ratio features (0-1 scale)"
+        default=["ratio_normal", "ratio_drowsy", "ratio_aggressive"], description="Ratio features (0-1 scale)"
     )
 
     acceleration_thresholds: Dict[str, Tuple[float, float]] = Field(
-        default={
-            "low": (0.2, 0.5),
-            "medium": (0.5, 0.8),
-            "high": (0.8, float('inf'))
-        },
-        description="Acceleration thresholds in g units"
+        default={"low": (0.2, 0.5), "medium": (0.5, 0.8), "high": (0.8, float("inf"))},
+        description="Acceleration thresholds in g units",
     )
 
 
 class TrainingHistory(BaseModel):
     """Training history with metrics per iteration."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     iterations: List[int] = Field(default_factory=list)
@@ -310,6 +312,7 @@ class TrainingHistory(BaseModel):
 
 class ClassificationMetrics(BaseModel):
     """Classification evaluation metrics."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     accuracy: float = Field(..., ge=0, le=1)
@@ -353,6 +356,7 @@ class RegressionMetrics(BaseModel):
 
 class TrainedModel(BaseModel):
     """Container for a trained model with history and metrics."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     model: Any = Field(...)
@@ -369,6 +373,7 @@ class TrainedModel(BaseModel):
 
 class ModelComparison(BaseModel):
     """Container for comparing multiple models."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     results: Any = Field(...)

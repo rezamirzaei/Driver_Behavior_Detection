@@ -8,7 +8,7 @@ import numpy as np
 from sklearn.base import BaseEstimator
 from sklearn.metrics import accuracy_score, r2_score
 
-from src.core.schemas import TrainingHistory, TrainedModel
+from src.core.schemas import TrainedModel, TrainingHistory
 
 
 class ModelTrainer:
@@ -43,10 +43,10 @@ class ModelTrainer:
             TrainedModel with trained model and history.
         """
         feature_names = feature_names or []
-        is_classifier = hasattr(self.model, 'classes_') or 'Classifier' in type(self.model).__name__
+        is_classifier = hasattr(self.model, "classes_") or "Classifier" in type(self.model).__name__
 
         # Check if model supports staged prediction
-        is_gradient_boosting = hasattr(self.model, 'staged_predict')
+        is_gradient_boosting = hasattr(self.model, "staged_predict")
 
         if is_gradient_boosting:
             self._train_iterative(X_train, y_train, X_val, y_val, n_iterations, is_classifier)
@@ -54,10 +54,7 @@ class ModelTrainer:
             self._train_single(X_train, y_train, X_val, y_val, is_classifier)
 
         return TrainedModel(
-            model=self.model,
-            model_name=self.model_name,
-            history=self.history,
-            feature_names=feature_names
+            model=self.model, model_name=self.model_name, history=self.history, feature_names=feature_names
         )
 
     def _train_iterative(
@@ -70,7 +67,7 @@ class ModelTrainer:
         is_classifier: bool,
     ) -> None:
         """Train with iteration tracking for Gradient Boosting models."""
-        if hasattr(self.model, 'n_estimators'):
+        if hasattr(self.model, "n_estimators"):
             self.model.set_params(n_estimators=n_iterations)
 
         self.model.fit(X_train, y_train)
@@ -152,8 +149,5 @@ def train_model(
     """
     trainer = ModelTrainer(model, model_name)
     return trainer.train(
-        X_train, y_train,
-        X_val=X_val, y_val=y_val,
-        n_iterations=n_iterations,
-        feature_names=feature_names
+        X_train, y_train, X_val=X_val, y_val=y_val, n_iterations=n_iterations, feature_names=feature_names
     )

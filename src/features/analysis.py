@@ -4,25 +4,23 @@ Feature analysis module for exploratory data analysis.
 Provides reusable functions for EDA that return structured Pydantic outputs.
 """
 
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 from scipy import stats
 
 from src.core.schemas import (
-    OutlierAnalysisResult,
-    CorrelationAnalysisResult,
     ClassDistributionResult,
-    FeatureStatisticsResult,
+    CorrelationAnalysisResult,
     DataQualityReport,
+    FeatureStatisticsResult,
+    OutlierAnalysisResult,
     ScoreMappingInfo,
 )
 
 
-def get_feature_columns(
-    df: pd.DataFrame,
-    target_col: Optional[str] = None
-) -> tuple:
+def get_feature_columns(df: pd.DataFrame, target_col: Optional[str] = None) -> tuple:
     """
     Get numerical and categorical column names from DataFrame.
 
@@ -34,7 +32,7 @@ def get_feature_columns(
         Tuple of (numerical_cols, categorical_cols).
     """
     numerical_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
 
     if target_col and target_col in numerical_cols:
         numerical_cols.remove(target_col)
@@ -45,9 +43,7 @@ def get_feature_columns(
 
 
 def get_correlations_with_target(
-    df: pd.DataFrame,
-    target_col: str,
-    feature_cols: Optional[List[str]] = None
+    df: pd.DataFrame, target_col: str, feature_cols: Optional[List[str]] = None
 ) -> pd.Series:
     """
     Get correlations of features with target, sorted by absolute value.
@@ -198,7 +194,8 @@ def analyze_outliers_dataframe(
     for col in columns:
         if col in df.columns:
             result = analyze_outliers(
-                df[col], col,
+                df[col],
+                col,
                 method=method,
                 iqr_multiplier=iqr_multiplier,
                 z_threshold=z_threshold,
@@ -219,7 +216,7 @@ def print_outlier_summary(results: List[OutlierAnalysisResult], method: str = "M
     """
     print(f"\n🔍 Outlier Analysis ({method} method):")
 
-    total_outliers = sum(r.n_outliers for r in results)
+    _total_outliers = sum(r.n_outliers for r in results)
     cols_with_outliers = sum(1 for r in results if r.n_outliers > 0)
 
     for result in results:
@@ -336,7 +333,7 @@ def analyze_class_distribution(
 
     max_count = max(counts.values())
     min_count = min(counts.values())
-    imbalance_ratio = max_count / min_count if min_count > 0 else float('inf')
+    imbalance_ratio = max_count / min_count if min_count > 0 else float("inf")
 
     is_imbalanced = imbalance_ratio > imbalance_threshold
 
@@ -406,7 +403,7 @@ def generate_data_quality_report(
         DataQualityReport with all analyses.
     """
     numerical_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
 
     if target_column:
         if target_column in numerical_cols:
@@ -418,10 +415,7 @@ def generate_data_quality_report(
     missing = {col: int(df[col].isna().sum()) for col in df.columns if df[col].isna().sum() > 0}
 
     # Feature statistics
-    feature_stats = [
-        compute_feature_statistics(df[col], col)
-        for col in numerical_cols
-    ]
+    feature_stats = [compute_feature_statistics(df[col], col) for col in numerical_cols]
 
     # Outlier analysis
     outlier_analysis = analyze_outliers_dataframe(df, columns=numerical_cols)
@@ -434,9 +428,7 @@ def generate_data_quality_report(
     # Correlation analysis
     correlation_analysis = None
     if len(numerical_cols) >= 2:
-        correlation_analysis = analyze_correlations(
-            df, columns=numerical_cols, target_column=target_column
-        )
+        correlation_analysis = analyze_correlations(df, columns=numerical_cols, target_column=target_column)
 
     return DataQualityReport(
         n_samples=len(df),
@@ -531,4 +523,3 @@ def analyze_driver_distribution(
         return pd.DataFrame()
 
     return pd.crosstab(df[driver_column], df[behavior_column])
-

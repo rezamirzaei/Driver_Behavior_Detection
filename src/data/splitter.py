@@ -2,9 +2,10 @@
 Data splitting utilities with proper generalization strategies.
 """
 
-from typing import Tuple, Optional, List
-import pandas as pd
+from typing import List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from src.core.schemas import Dataset, SplitData
@@ -37,10 +38,7 @@ def split_data(
         stratify_col = y
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=test_size,
-        stratify=stratify_col,
-        random_state=random_state
+        X, y, test_size=test_size, stratify=stratify_col, random_state=random_state
     )
 
     return SplitData(
@@ -49,7 +47,7 @@ def split_data(
         y_train=y_train,
         y_test=y_test,
         feature_names=dataset.feature_names,
-        target_name=dataset.target_name
+        target_name=dataset.target_name,
     )
 
 
@@ -82,11 +80,11 @@ def split_by_driver(
     Returns:
         X_train, X_test, y_train, y_test (with 'driver' column removed from features)
     """
-    if 'driver' not in X.columns:
+    if "driver" not in X.columns:
         raise ValueError("X must contain 'driver' column for driver-level splitting")
 
     # Get unique drivers
-    unique_drivers = X['driver'].unique()
+    unique_drivers = X["driver"].unique()
     total_samples = len(X)
     target_test_samples = int(total_samples * test_size)
 
@@ -94,10 +92,10 @@ def split_by_driver(
         # Randomly select drivers for test set
         n_test_drivers = max(1, int(len(unique_drivers) * test_size))
         np.random.seed(random_state)
-        test_drivers = np.random.choice(unique_drivers, size=n_test_drivers, replace=False)
+        test_drivers = list(np.random.choice(unique_drivers, size=n_test_drivers, replace=False))
 
     # Step 1: All specified test_driver samples go to test (NEVER in training)
-    mandatory_test_mask = X['driver'].isin(test_drivers)
+    mandatory_test_mask = X["driver"].isin(test_drivers)
     mandatory_test_count = mandatory_test_mask.sum()
 
     # Convert y to pandas Series if it's a numpy array (for consistent handling)
@@ -121,17 +119,12 @@ def split_by_driver(
         # Stratified split of remaining samples
         try:
             X_train_extra, X_test_extra, y_train_extra, y_test_extra = train_test_split(
-                X_remaining, y_remaining,
-                test_size=additional_ratio,
-                stratify=y_remaining,
-                random_state=random_state
+                X_remaining, y_remaining, test_size=additional_ratio, stratify=y_remaining, random_state=random_state
             )
         except ValueError:
             # If stratification fails, do random split
             X_train_extra, X_test_extra, y_train_extra, y_test_extra = train_test_split(
-                X_remaining, y_remaining,
-                test_size=additional_ratio,
-                random_state=random_state
+                X_remaining, y_remaining, test_size=additional_ratio, random_state=random_state
             )
 
         # Combine: Train = remaining train portion
@@ -149,22 +142,21 @@ def split_by_driver(
         y_test = y[mandatory_test_mask].copy()
 
     # Remove driver column from features
-    X_train = X_train.drop(columns=['driver'])
-    X_test = X_test.drop(columns=['driver'])
+    X_train = X_train.drop(columns=["driver"])
+    X_test = X_test.drop(columns=["driver"])
 
     # Convert y back to numpy array if it was originally an array
     if y_is_array:
         y_train = y_train.values
         y_test = y_test.values
 
-    train_drivers = sorted([d for d in unique_drivers if d not in test_drivers])
+    _train_drivers = sorted([d for d in unique_drivers if d not in test_drivers])
 
-    print(f"\n📊 Driver-level split (D6 NEVER in training):")
+    print("\n📊 Driver-level split (D6 NEVER in training):")
     print(f"  Test drivers (held out): {sorted(test_drivers)} ({mandatory_test_count} samples)")
     print(f"  Additional stratified test samples: {len(X_test) - mandatory_test_count}")
-    print(f"  Train samples: {len(X_train)} ({100*len(X_train)/total_samples:.1f}%)")
-    print(f"  Test samples: {len(X_test)} ({100*len(X_test)/total_samples:.1f}%)")
-    print(f"  ✅ D6 is NEVER used for training\n")
+    print(f"  Train samples: {len(X_train)} ({100 * len(X_train) / total_samples:.1f}%)")
+    print(f"  Test samples: {len(X_test)} ({100 * len(X_test) / total_samples:.1f}%)")
+    print("  ✅ D6 is NEVER used for training\n")
 
     return X_train, X_test, y_train, y_test
-

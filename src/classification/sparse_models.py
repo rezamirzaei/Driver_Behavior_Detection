@@ -5,11 +5,12 @@ Includes MCP (Minimax Concave Penalty) and SCAD penalized logistic regression.
 These provide better sparse solutions than L1 for feature selection.
 """
 
+from typing import Optional
+
 import numpy as np
 from scipy.optimize import minimize
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.preprocessing import LabelEncoder
-from typing import Optional
 
 
 class MCPLogisticRegression(BaseEstimator, ClassifierMixin):
@@ -37,7 +38,7 @@ class MCPLogisticRegression(BaseEstimator, ClassifierMixin):
         gamma: float = 3.0,
         max_iter: int = 1000,
         tol: float = 1e-4,
-        random_state: Optional[int] = None
+        random_state: Optional[int] = None,
     ):
         self.alpha = alpha
         self.gamma = gamma
@@ -51,18 +52,14 @@ class MCPLogisticRegression(BaseEstimator, ClassifierMixin):
         penalty = np.where(
             abs_beta <= self.gamma * self.alpha,
             self.alpha * abs_beta - beta**2 / (2 * self.gamma),
-            self.gamma * self.alpha**2 / 2
+            self.gamma * self.alpha**2 / 2,
         )
         return penalty.sum()
 
     def _mcp_gradient(self, beta: np.ndarray) -> np.ndarray:
         """Compute MCP penalty gradient."""
         abs_beta = np.abs(beta)
-        grad = np.where(
-            abs_beta <= self.gamma * self.alpha,
-            self.alpha * np.sign(beta) - beta / self.gamma,
-            0
-        )
+        grad = np.where(abs_beta <= self.gamma * self.alpha, self.alpha * np.sign(beta) - beta / self.gamma, 0)
         return grad
 
     def _softmax(self, z: np.ndarray) -> np.ndarray:
@@ -77,8 +74,8 @@ class MCPLogisticRegression(BaseEstimator, ClassifierMixin):
         n_classes = y_onehot.shape[1]
 
         # Reshape parameters
-        W = params[:n_features * n_classes].reshape(n_features, n_classes)
-        b = params[n_features * n_classes:]
+        W = params[: n_features * n_classes].reshape(n_features, n_classes)
+        b = params[n_features * n_classes :]
 
         # Forward pass
         logits = X @ W + b
@@ -99,8 +96,8 @@ class MCPLogisticRegression(BaseEstimator, ClassifierMixin):
         n_classes = y_onehot.shape[1]
 
         # Reshape parameters
-        W = params[:n_features * n_classes].reshape(n_features, n_classes)
-        b = params[n_features * n_classes:]
+        W = params[: n_features * n_classes].reshape(n_features, n_classes)
+        b = params[n_features * n_classes :]
 
         # Forward pass
         logits = X @ W + b
@@ -142,14 +139,14 @@ class MCPLogisticRegression(BaseEstimator, ClassifierMixin):
             self._objective,
             params_init,
             args=(X, y_onehot),
-            method='L-BFGS-B',
+            method="L-BFGS-B",
             jac=self._gradient,
-            options={'maxiter': self.max_iter, 'gtol': self.tol}
+            options={"maxiter": self.max_iter, "gtol": self.tol},
         )
 
         # Extract parameters
-        self.coef_ = result.x[:n_features * n_classes].reshape(n_features, n_classes)
-        self.intercept_ = result.x[n_features * n_classes:]
+        self.coef_ = result.x[: n_features * n_classes].reshape(n_features, n_classes)
+        self.intercept_ = result.x[n_features * n_classes :]
 
         return self
 
@@ -190,7 +187,7 @@ class SCADLogisticRegression(BaseEstimator, ClassifierMixin):
         a: float = 3.7,
         max_iter: int = 1000,
         tol: float = 1e-4,
-        random_state: Optional[int] = None
+        random_state: Optional[int] = None,
     ):
         self.alpha = alpha
         self.a = a
@@ -207,8 +204,8 @@ class SCADLogisticRegression(BaseEstimator, ClassifierMixin):
             np.where(
                 abs_beta <= self.a * self.alpha,
                 (2 * self.a * self.alpha * abs_beta - beta**2 - self.alpha**2) / (2 * (self.a - 1)),
-                (self.a + 1) * self.alpha**2 / 2
-            )
+                (self.a + 1) * self.alpha**2 / 2,
+            ),
         )
         return penalty.sum()
 
@@ -223,8 +220,8 @@ class SCADLogisticRegression(BaseEstimator, ClassifierMixin):
         n_samples, n_features = X.shape
         n_classes = y_onehot.shape[1]
 
-        W = params[:n_features * n_classes].reshape(n_features, n_classes)
-        b = params[n_features * n_classes:]
+        W = params[: n_features * n_classes].reshape(n_features, n_classes)
+        b = params[n_features * n_classes :]
 
         logits = X @ W + b
         probs = self._softmax(logits)
@@ -257,12 +254,12 @@ class SCADLogisticRegression(BaseEstimator, ClassifierMixin):
             self._objective,
             params_init,
             args=(X, y_onehot),
-            method='L-BFGS-B',
-            options={'maxiter': self.max_iter, 'gtol': self.tol}
+            method="L-BFGS-B",
+            options={"maxiter": self.max_iter, "gtol": self.tol},
         )
 
-        self.coef_ = result.x[:n_features * n_classes].reshape(n_features, n_classes)
-        self.intercept_ = result.x[n_features * n_classes:]
+        self.coef_ = result.x[: n_features * n_classes].reshape(n_features, n_classes)
+        self.intercept_ = result.x[n_features * n_classes :]
 
         return self
 
@@ -276,4 +273,3 @@ class SCADLogisticRegression(BaseEstimator, ClassifierMixin):
         proba = self.predict_proba(X)
         indices = np.argmax(proba, axis=1)
         return self.le_.inverse_transform(indices)
-
