@@ -57,12 +57,12 @@ class HuberL1Regressor(BaseEstimator, RegressorMixin):
         """Soft thresholding operator for L1."""
         return np.sign(x) * np.maximum(np.abs(x) - threshold, 0)
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'HuberL1Regressor':
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "HuberL1Regressor":
         """Fit using IRLS (Iteratively Reweighted Least Squares) + Coordinate Descent."""
         n_samples, n_features = X.shape
 
         # Initialize
-        if self.warm_start and hasattr(self, 'coef_'):
+        if self.warm_start and hasattr(self, "coef_"):
             coef = self.coef_.copy()
             intercept = self.intercept_
         else:
@@ -93,10 +93,7 @@ class HuberL1Regressor(BaseEstimator, RegressorMixin):
                 denominator = np.sum(weights * X[:, j] ** 2) + 1e-10
 
                 # Soft threshold for L1
-                coef[j] = self._soft_threshold(
-                    numerator / denominator,
-                    self.alpha / denominator
-                )
+                coef[j] = self._soft_threshold(numerator / denominator, self.alpha / denominator)
 
             # Update intercept (no penalty)
             residuals = y - X @ coef
@@ -178,7 +175,7 @@ class SCADRegressor(BaseEstimator, RegressorMixin):
             # No shrinkage region
             return z
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'SCADRegressor':
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "SCADRegressor":
         """Fit using Local Linear Approximation (LLA) algorithm."""
         n_samples, n_features = X.shape
 
@@ -287,12 +284,12 @@ class MCPRegressor(BaseEstimator, RegressorMixin):
             return 0.0
         elif abs_z <= gamma * lam:
             # Transition region - partial shrinkage
-            return sign_z * (abs_z - lam) / (1 - 1/gamma)
+            return sign_z * (abs_z - lam) / (1 - 1 / gamma)
         else:
             # Above threshold - no shrinkage
             return z
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'MCPRegressor':
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "MCPRegressor":
         """Fit using coordinate descent with MCP thresholding."""
         n_samples, n_features = X.shape
 
@@ -386,11 +383,11 @@ class HuberMCPRegressor(BaseEstimator, RegressorMixin):
         if abs_z <= lam:
             return 0.0
         elif abs_z <= gamma * lam:
-            return sign_z * (abs_z - lam) / (1 - 1/gamma)
+            return sign_z * (abs_z - lam) / (1 - 1 / gamma)
         else:
             return z
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'HuberMCPRegressor':
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "HuberMCPRegressor":
         """Fit using IRLS + Coordinate Descent with MCP."""
         n_samples, n_features = X.shape
 
@@ -414,11 +411,7 @@ class HuberMCPRegressor(BaseEstimator, RegressorMixin):
                 numerator = np.sum(weights * X[:, j] * r_j)
                 denominator = np.sum(weights * X[:, j] ** 2) + 1e-10
 
-                coef[j] = self._mcp_threshold(
-                    numerator / denominator,
-                    self.alpha / denominator,
-                    self.gamma
-                )
+                coef[j] = self._mcp_threshold(numerator / denominator, self.alpha / denominator, self.gamma)
 
             residuals = y - X @ coef
             intercept = np.sum(weights * residuals) / (np.sum(weights) + 1e-10)
@@ -485,7 +478,7 @@ class HuberSCADRegressor(BaseEstimator, RegressorMixin):
         else:
             return z
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'HuberSCADRegressor':
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "HuberSCADRegressor":
         """Fit using IRLS + Coordinate Descent with SCAD."""
         n_samples, n_features = X.shape
 
@@ -509,11 +502,7 @@ class HuberSCADRegressor(BaseEstimator, RegressorMixin):
                 numerator = np.sum(weights * X[:, j] * r_j)
                 denominator = np.sum(weights * X[:, j] ** 2) + 1e-10
 
-                coef[j] = self._scad_threshold(
-                    numerator / denominator,
-                    self.alpha / denominator,
-                    self.a
-                )
+                coef[j] = self._scad_threshold(numerator / denominator, self.alpha / denominator, self.a)
 
             residuals = y - X @ coef
             intercept = np.sum(weights * residuals) / (np.sum(weights) + 1e-10)
@@ -564,4 +553,3 @@ def get_sparse_robust_regressors(
         "Huber + SCAD": HuberSCADRegressor(alpha=alpha, a=3.7, epsilon=1.35, max_iter=1000),
         "Huber + MCP": HuberMCPRegressor(alpha=alpha, gamma=3.0, epsilon=1.35, max_iter=1000),
     }
-

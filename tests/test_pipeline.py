@@ -40,9 +40,7 @@ def test_classification_pipeline():
 
     from src.models import evaluate_classifier, train_model
 
-    rf = RandomForestClassifier(
-        n_estimators=50, random_state=42, class_weight="balanced"
-    )
+    rf = RandomForestClassifier(n_estimators=50, random_state=42, class_weight="balanced")
     trained = train_model(
         train_feat.X,
         y_train,
@@ -52,9 +50,7 @@ def test_classification_pipeline():
         y_val=y_test,
     )
 
-    metrics = evaluate_classifier(
-        trained.model, test_feat.X, y_test, list(encoder.classes_)
-    )
+    metrics = evaluate_classifier(trained.model, test_feat.X, y_test, list(encoder.classes_))
 
     # Smoke assertions: not about hitting a specific metric, but ensuring
     # the pipeline produces sensible outputs.

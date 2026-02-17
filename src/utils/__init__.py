@@ -71,4 +71,3 @@ __all__ = [
     "print_sparse_model_results",
     "print_feature_overview",
 ]
-

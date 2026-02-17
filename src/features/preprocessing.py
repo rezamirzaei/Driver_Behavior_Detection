@@ -59,9 +59,7 @@ def engineer_regression_features(df: pd.DataFrame) -> pd.DataFrame:
             df[flag] = (df[col].notna() & (df[col] != "") & (df[col] != "N")).astype(int)
 
     if "has_supercharger" in df.columns and "has_turbocharger" in df.columns:
-        df["is_forced_induction"] = (
-            (df["has_supercharger"] == 1) | (df["has_turbocharger"] == 1)
-        ).astype(int)
+        df["is_forced_induction"] = ((df["has_supercharger"] == 1) | (df["has_turbocharger"] == 1)).astype(int)
 
     # --- Year-based feature ---
     if "year" in df.columns:
@@ -92,7 +90,7 @@ def encode_and_scale(
     from sklearn.impute import SimpleImputer
 
     if categorical_cols is None:
-        categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
+        categorical_cols = X_train.select_dtypes(include=["object", "category"]).columns.tolist()
 
     # Target encoding for categoricals
     if categorical_cols:
@@ -104,11 +102,11 @@ def encode_and_scale(
         X_test_encoded = X_test.copy()
 
     # Convert to numpy
-    X_train_arr = X_train_encoded.values if hasattr(X_train_encoded, 'values') else X_train_encoded
-    X_test_arr = X_test_encoded.values if hasattr(X_test_encoded, 'values') else X_test_encoded
+    X_train_arr = X_train_encoded.values if hasattr(X_train_encoded, "values") else X_train_encoded
+    X_test_arr = X_test_encoded.values if hasattr(X_test_encoded, "values") else X_test_encoded
 
     # Impute NaN values with median (robust to outliers)
-    imputer = SimpleImputer(strategy='median')
+    imputer = SimpleImputer(strategy="median")
     X_train_imputed = imputer.fit_transform(X_train_arr)
     X_test_imputed = imputer.transform(X_test_arr)
 
@@ -131,9 +129,9 @@ class FeaturePreprocessor:
             scaler_type: Type of scaler ('standard', 'robust', 'none').
         """
         self.scaler_type = scaler_type
-        self.preprocessor = None
-        self.numeric_cols = []
-        self.categorical_cols = []
+        self.preprocessor: Optional[ColumnTransformer] = None
+        self.numeric_cols: List[str] = []
+        self.categorical_cols: List[str] = []
 
     def fit_transform(
         self,
@@ -159,7 +157,7 @@ class FeaturePreprocessor:
             self.numeric_cols = numeric_cols
 
         if categorical_cols is None:
-            self.categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
+            self.categorical_cols = X_train.select_dtypes(include=["object", "category"]).columns.tolist()
         else:
             self.categorical_cols = categorical_cols
 
@@ -176,13 +174,13 @@ class FeaturePreprocessor:
             transformers.append(("num", scaler, self.numeric_cols))
 
         if self.categorical_cols:
-            encoder = OneHotEncoder(drop='first', sparse_output=False, handle_unknown='ignore')
+            encoder = OneHotEncoder(drop="first", sparse_output=False, handle_unknown="ignore")
             transformers.append(("cat", encoder, self.categorical_cols))
 
         if not transformers:
             return X_train.values
 
-        self.preprocessor = ColumnTransformer(transformers=transformers, remainder='drop')
+        self.preprocessor = ColumnTransformer(transformers=transformers, remainder="drop")
         return self.preprocessor.fit_transform(X_train)
 
     def transform(self, X: pd.DataFrame) -> np.ndarray:
@@ -198,7 +196,7 @@ class FeaturePreprocessor:
 
         names = []
         for name, trans, cols in self.preprocessor.transformers_:
-            if name == "cat" and hasattr(trans, 'get_feature_names_out'):
+            if name == "cat" and hasattr(trans, "get_feature_names_out"):
                 names.extend(trans.get_feature_names_out(cols).tolist())
             elif name != "remainder":
                 names.extend(cols)
@@ -250,16 +248,9 @@ def preprocess_features(
 
     feature_names = preprocessor.get_feature_names()
 
-    train_features = FeatureSet(
-        X=X_train_processed,
-        feature_names=feature_names,
-        scaler=preprocessor.preprocessor
-    )
+    train_features = FeatureSet(X=X_train_processed, feature_names=feature_names, scaler=preprocessor.preprocessor)
 
-    test_features = FeatureSet(
-        X=X_test_processed,
-        feature_names=feature_names
-    )
+    test_features = FeatureSet(X=X_test_processed, feature_names=feature_names)
 
     return train_features, test_features
 
@@ -301,4 +292,3 @@ def encode_target(y_train, y_test) -> Tuple[np.ndarray, np.ndarray, TargetEncode
     y_train_encoded = encoder.fit_transform(y_train)
     y_test_encoded = encoder.transform(y_test)
     return y_train_encoded, y_test_encoded, encoder
-

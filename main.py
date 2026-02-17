@@ -23,11 +23,15 @@ def run_notebook(notebook_path):
     start_time = time.time()
 
     cmd = [
-        sys.executable, "-m", "jupyter", "nbconvert",
-        "--to", "notebook",
+        sys.executable,
+        "-m",
+        "jupyter",
+        "nbconvert",
+        "--to",
+        "notebook",
         "--execute",
         "--inplace",
-        str(notebook_path)
+        str(notebook_path),
     ]
 
     try:
@@ -40,6 +44,7 @@ def run_notebook(notebook_path):
         print(e.stderr)
         return False
 
+
 def main():
     project_root = Path(__file__).parent
     notebooks_dir = project_root / "notebooks"
@@ -48,7 +53,7 @@ def main():
         "01_eda_classification.ipynb",
         "02_classification.ipynb",
         "03_eda_regression.ipynb",
-        "04_regression.ipynb"
+        "04_regression.ipynb",
     ]
 
     print("🚀 Starting ABAX Data Science Pipeline...")
@@ -68,6 +73,7 @@ def main():
 
     print(f"\nPipeline finished. {success_count}/{len(notebooks_to_run)} notebooks ran successfully.")
     print(f"Check {notebooks_dir} for executed notebooks with outputs.")
+
 
 if __name__ == "__main__":
     main()

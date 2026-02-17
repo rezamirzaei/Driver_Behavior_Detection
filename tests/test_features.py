@@ -25,11 +25,13 @@ class TestFeaturePreprocessor:
     def sample_data(self):
         """Create sample data with numeric and categorical features."""
         np.random.seed(42)
-        df = pd.DataFrame({
-            'num1': np.random.randn(100),
-            'num2': np.random.randn(100),
-            'cat1': np.random.choice(['A', 'B', 'C'], 100),
-        })
+        df = pd.DataFrame(
+            {
+                "num1": np.random.randn(100),
+                "num2": np.random.randn(100),
+                "cat1": np.random.choice(["A", "B", "C"], 100),
+            }
+        )
         return df
 
     def test_fit_transform(self, sample_data):
@@ -38,8 +40,8 @@ class TestFeaturePreprocessor:
         X_transformed = preprocessor.fit_transform(sample_data)
 
         assert X_transformed.shape[0] == 100
-        assert preprocessor.numeric_cols == ['num1', 'num2']
-        assert preprocessor.categorical_cols == ['cat1']
+        assert preprocessor.numeric_cols == ["num1", "num2"]
+        assert preprocessor.categorical_cols == ["cat1"]
 
     def test_transform(self, sample_data):
         """Test transform on new data."""
@@ -59,22 +61,22 @@ class TestPreprocessFeatures:
     def split_data(self):
         """Create split data for testing."""
         np.random.seed(42)
-        X_train = pd.DataFrame({
-            'num1': np.random.randn(80),
-            'num2': np.random.randn(80),
-        })
-        X_test = pd.DataFrame({
-            'num1': np.random.randn(20),
-            'num2': np.random.randn(20),
-        })
+        X_train = pd.DataFrame(
+            {
+                "num1": np.random.randn(80),
+                "num2": np.random.randn(80),
+            }
+        )
+        X_test = pd.DataFrame(
+            {
+                "num1": np.random.randn(20),
+                "num2": np.random.randn(20),
+            }
+        )
         y_train = pd.Series(np.random.randint(0, 2, 80))
         y_test = pd.Series(np.random.randint(0, 2, 20))
 
-        return SplitData(
-            X_train=X_train, X_test=X_test,
-            y_train=y_train, y_test=y_test,
-            feature_names=['num1', 'num2']
-        )
+        return SplitData(X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test, feature_names=["num1", "num2"])
 
     def test_preprocess_features(self, split_data):
         """Test preprocessing pipeline."""
@@ -91,8 +93,8 @@ class TestTargetEncoder:
 
     def test_encode_target(self):
         """Test target encoding."""
-        y_train = pd.Series(['A', 'B', 'C', 'A', 'B'])
-        y_test = pd.Series(['A', 'C'])
+        y_train = pd.Series(["A", "B", "C", "A", "B"])
+        y_test = pd.Series(["A", "C"])
 
         y_train_enc, y_test_enc, encoder = encode_target(y_train, y_test)
 
@@ -102,13 +104,13 @@ class TestTargetEncoder:
 
     def test_inverse_transform(self):
         """Test inverse transform."""
-        y_train = pd.Series(['A', 'B', 'C'])
-        y_test = pd.Series(['A'])
+        y_train = pd.Series(["A", "B", "C"])
+        y_test = pd.Series(["A"])
 
         _, _, encoder = encode_target(y_train, y_test)
 
         original = encoder.inverse_transform([0, 1, 2])
-        assert list(original) == ['A', 'B', 'C']
+        assert list(original) == ["A", "B", "C"]
 
 
 class TestEngineerRegressionFeatures:
@@ -118,19 +120,21 @@ class TestEngineerRegressionFeatures:
     def epa_like_data(self):
         """Create a small DataFrame resembling the EPA dataset."""
         np.random.seed(42)
-        return pd.DataFrame({
-            "displ": [2.0, 3.5, 0.0, 1.8, 4.0],
-            "cylinders": [4, 6, 0, 4, 8],
-            "year": [2018, 2019, 2020, 2021, 2022],
-            "rangeCity": [250, 0, 300, 200, 100],
-            "rangeHwy": [350, 0, 400, 300, 200],
-            "sCharger": ["S", "", None, "", "S"],
-            "tCharger": ["", "T", None, "", ""],
-            "evMotor": [None, None, "AC motor", None, None],
-            "startStop": ["Y", "N", "Y", "N", "Y"],
-            "guzzler": [None, None, None, "G", None],
-            "comb08": [30, 25, 110, 35, 20],
-        })
+        return pd.DataFrame(
+            {
+                "displ": [2.0, 3.5, 0.0, 1.8, 4.0],
+                "cylinders": [4, 6, 0, 4, 8],
+                "year": [2018, 2019, 2020, 2021, 2022],
+                "rangeCity": [250, 0, 300, 200, 100],
+                "rangeHwy": [350, 0, 400, 300, 200],
+                "sCharger": ["S", "", None, "", "S"],
+                "tCharger": ["", "T", None, "", ""],
+                "evMotor": [None, None, "AC motor", None, None],
+                "startStop": ["Y", "N", "Y", "N", "Y"],
+                "guzzler": [None, None, None, "G", None],
+                "comb08": [30, 25, 110, 35, 20],
+            }
+        )
 
     def test_does_not_mutate_input(self, epa_like_data):
         """engineer_regression_features must not modify the input df."""
@@ -142,10 +146,17 @@ class TestEngineerRegressionFeatures:
         """Check that all expected engineered columns are present."""
         result = engineer_regression_features(epa_like_data)
         expected_new = [
-            "displ_per_cyl", "displ_x_cyl", "displ_squared",
-            "range_total", "range_city_ratio",
-            "has_supercharger", "has_turbocharger", "is_electric",
-            "has_start_stop", "is_guzzler", "is_forced_induction",
+            "displ_per_cyl",
+            "displ_x_cyl",
+            "displ_squared",
+            "range_total",
+            "range_city_ratio",
+            "has_supercharger",
+            "has_turbocharger",
+            "is_electric",
+            "has_start_stop",
+            "is_guzzler",
+            "is_forced_induction",
             "vehicle_age",
         ]
         for col in expected_new:
@@ -166,8 +177,14 @@ class TestEngineerRegressionFeatures:
     def test_binary_flags_are_int(self, epa_like_data):
         """Binary indicator columns should contain only 0 and 1."""
         result = engineer_regression_features(epa_like_data)
-        for col in ["has_supercharger", "has_turbocharger", "is_electric",
-                     "has_start_stop", "is_guzzler", "is_forced_induction"]:
+        for col in [
+            "has_supercharger",
+            "has_turbocharger",
+            "is_electric",
+            "has_start_stop",
+            "is_guzzler",
+            "is_forced_induction",
+        ]:
             assert set(result[col].unique()).issubset({0, 1}), f"{col} not binary"
 
     def test_vehicle_age_correctness(self, epa_like_data):

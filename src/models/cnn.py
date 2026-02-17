@@ -43,7 +43,9 @@ class CNN1DNetwork(nn.Module):
         actual_kernel_size = min(kernel_size, max(1, input_size // 2))
 
         # First convolutional block
-        self.conv1 = nn.Conv1d(in_channels=1, out_channels=n_filters, kernel_size=actual_kernel_size, padding=actual_kernel_size//2)
+        self.conv1 = nn.Conv1d(
+            in_channels=1, out_channels=n_filters, kernel_size=actual_kernel_size, padding=actual_kernel_size // 2
+        )
         self.bn1 = nn.BatchNorm1d(n_filters) if use_batch_norm else nn.Identity()
         self.relu1 = nn.ReLU()
 
@@ -53,7 +55,12 @@ class CNN1DNetwork(nn.Module):
         # Second convolutional block
         pool1_size = max(input_size // 2, 4)
         actual_kernel_size2 = min(kernel_size, max(1, pool1_size // 2))
-        self.conv2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=actual_kernel_size2, padding=actual_kernel_size2//2)
+        self.conv2 = nn.Conv1d(
+            in_channels=n_filters,
+            out_channels=n_filters * 2,
+            kernel_size=actual_kernel_size2,
+            padding=actual_kernel_size2 // 2,
+        )
         self.bn2 = nn.BatchNorm1d(n_filters * 2) if use_batch_norm else nn.Identity()
         self.relu2 = nn.ReLU()
 
@@ -172,16 +179,18 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
             return torch.device(self.device)
 
         if torch.cuda.is_available():
-            return torch.device('cuda')
-        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            return torch.device('mps')
+            return torch.device("cuda")
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return torch.device("mps")
         else:
-            return torch.device('cpu')
+            return torch.device("cpu")
 
-    def _prepare_data(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def _prepare_data(
+        self, X: np.ndarray, y: Optional[np.ndarray] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Prepare data for PyTorch."""
         # Convert to numpy if needed
-        if hasattr(X, 'values'):
+        if hasattr(X, "values"):
             X = X.values
 
         # Ensure float32
@@ -194,7 +203,7 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
         X_tensor = torch.from_numpy(X)
 
         if y is not None:
-            if hasattr(y, 'values'):
+            if hasattr(y, "values"):
                 y = y.values
             y = y.astype(np.int64)
             y_tensor = torch.from_numpy(y)
@@ -202,7 +211,7 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
 
         return X_tensor, None
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'CNNClassifier':
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "CNNClassifier":
         """
         Fit the CNN classifier.
 
@@ -223,7 +232,7 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
             print(f"🔧 Training on device: {self.device_}")
 
         # Encode labels
-        if y.dtype == 'object' or (len(y) > 0 and isinstance(y[0], str)):
+        if y.dtype == "object" or (len(y) > 0 and isinstance(y[0], str)):
             y_encoded = self.le_.fit_transform(y)
         else:
             y_encoded = y.copy()
@@ -268,21 +277,17 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
 
         # Loss and optimizer
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(
-            self.model_.parameters(),
-            lr=self.learning_rate,
-            weight_decay=self.weight_decay
-        )
+        optimizer = optim.Adam(self.model_.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
         # Training history
         self.history_ = {
-            'train_loss': [],
-            'train_acc': [],
-            'val_loss': [],
-            'val_acc': [],
+            "train_loss": [],
+            "train_acc": [],
+            "val_loss": [],
+            "val_acc": [],
         }
 
-        best_val_loss = float('inf')
+        best_val_loss = float("inf")
         patience_counter = 0
         best_model_state = None
 
@@ -335,10 +340,10 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
             val_acc = val_correct / val_total
 
             # Store history
-            self.history_['train_loss'].append(train_loss)
-            self.history_['train_acc'].append(train_acc)
-            self.history_['val_loss'].append(val_loss)
-            self.history_['val_acc'].append(val_acc)
+            self.history_["train_loss"].append(train_loss)
+            self.history_["train_acc"].append(train_acc)
+            self.history_["val_loss"].append(val_loss)
+            self.history_["val_acc"].append(val_acc)
 
             # Early stopping check
             if val_loss < best_val_loss:
@@ -349,13 +354,15 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
                 patience_counter += 1
 
             if self.verbose > 0 and (epoch + 1) % 10 == 0:
-                print(f"  Epoch {epoch+1}/{self.epochs}: "
-                      f"Train Loss={train_loss:.4f}, Train Acc={train_acc:.4f}, "
-                      f"Val Loss={val_loss:.4f}, Val Acc={val_acc:.4f}")
+                print(
+                    f"  Epoch {epoch + 1}/{self.epochs}: "
+                    f"Train Loss={train_loss:.4f}, Train Acc={train_acc:.4f}, "
+                    f"Val Loss={val_loss:.4f}, Val Acc={val_acc:.4f}"
+                )
 
             if patience_counter >= self.early_stopping_patience:
                 if self.verbose > 0:
-                    print(f"  Early stopping at epoch {epoch+1}")
+                    print(f"  Early stopping at epoch {epoch + 1}")
                 break
 
         # Load best model
@@ -420,7 +427,7 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
             Accuracy score
         """
         y_pred = self.predict(X)
-        if y.dtype == 'object' or (len(y) > 0 and isinstance(y[0], str)):
+        if y.dtype == "object" or (len(y) > 0 and isinstance(y[0], str)):
             return np.mean(y_pred == y)
         else:
             return np.mean(self.le_.transform(y_pred) == y)
@@ -446,7 +453,7 @@ class CNNClassifierRaw(CNNClassifier):
         epochs: int = 100,
         batch_size: int = 32,
         learning_rate: float = 0.0005,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize the Raw Data CNN Classifier.
@@ -470,7 +477,7 @@ class CNNClassifierRaw(CNNClassifier):
             epochs=epochs,
             batch_size=batch_size,
             learning_rate=learning_rate,
-            **kwargs
+            **kwargs,
         )
         self.n_conv_layers = n_conv_layers
 
@@ -487,23 +494,23 @@ def plot_cnn_training_history(history: Dict[str, List[float]], save_path: Option
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-    epochs = range(1, len(history['train_loss']) + 1)
+    epochs = range(1, len(history["train_loss"]) + 1)
 
     # Loss plot
-    axes[0].plot(epochs, history['train_loss'], 'b-', label='Training Loss', linewidth=2)
-    axes[0].plot(epochs, history['val_loss'], 'r-', label='Validation Loss', linewidth=2)
-    axes[0].set_xlabel('Epoch', fontsize=12)
-    axes[0].set_ylabel('Loss', fontsize=12)
-    axes[0].set_title('Training and Validation Loss', fontweight='bold', fontsize=14)
+    axes[0].plot(epochs, history["train_loss"], "b-", label="Training Loss", linewidth=2)
+    axes[0].plot(epochs, history["val_loss"], "r-", label="Validation Loss", linewidth=2)
+    axes[0].set_xlabel("Epoch", fontsize=12)
+    axes[0].set_ylabel("Loss", fontsize=12)
+    axes[0].set_title("Training and Validation Loss", fontweight="bold", fontsize=14)
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
 
     # Accuracy plot
-    axes[1].plot(epochs, history['train_acc'], 'b-', label='Training Accuracy', linewidth=2)
-    axes[1].plot(epochs, history['val_acc'], 'r-', label='Validation Accuracy', linewidth=2)
-    axes[1].set_xlabel('Epoch', fontsize=12)
-    axes[1].set_ylabel('Accuracy', fontsize=12)
-    axes[1].set_title('Training and Validation Accuracy', fontweight='bold', fontsize=14)
+    axes[1].plot(epochs, history["train_acc"], "b-", label="Training Accuracy", linewidth=2)
+    axes[1].plot(epochs, history["val_acc"], "r-", label="Validation Accuracy", linewidth=2)
+    axes[1].set_xlabel("Epoch", fontsize=12)
+    axes[1].set_ylabel("Accuracy", fontsize=12)
+    axes[1].set_title("Training and Validation Accuracy", fontweight="bold", fontsize=14)
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
     axes[1].set_ylim(0, 1.05)
@@ -511,7 +518,7 @@ def plot_cnn_training_history(history: Dict[str, List[float]], save_path: Option
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='white')
+        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
     else:
         plt.show()

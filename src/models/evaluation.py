@@ -2,7 +2,7 @@
 Model evaluation module.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import warnings
 
 import numpy as np
@@ -85,7 +85,7 @@ def train_and_evaluate_classifier(
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred, average='weighted')
+    f1 = f1_score(y_test, y_pred, average="weighted")
     return y_pred, acc, f1
 
 
@@ -111,7 +111,7 @@ class QuantileRegressor:
             random_state: Random seed.
         """
         self.quantiles = quantiles
-        self.models = {}
+        self.models: Dict[float, Any] = {}
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.random_state = random_state
@@ -122,7 +122,7 @@ class QuantileRegressor:
 
         for q in self.quantiles:
             self.models[q] = GradientBoostingRegressor(
-                loss='quantile',
+                loss="quantile",
                 alpha=q,
                 n_estimators=self.n_estimators,
                 max_depth=self.max_depth,
@@ -141,9 +141,9 @@ class QuantileRegressor:
         """
         q_lower, q_median, q_upper = self.quantiles
         return {
-            'lower': self.models[q_lower].predict(X),
-            'median': self.models[q_median].predict(X),
-            'upper': self.models[q_upper].predict(X),
+            "lower": self.models[q_lower].predict(X),
+            "median": self.models[q_median].predict(X),
+            "upper": self.models[q_upper].predict(X),
         }
 
     def predict_interval(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -154,7 +154,7 @@ class QuantileRegressor:
             Tuple of (lower_bound, point_estimate, upper_bound).
         """
         preds = self.predict(X)
-        return preds['lower'], preds['median'], preds['upper']
+        return preds["lower"], preds["median"], preds["upper"]
 
 
 def compute_interval_coverage(
@@ -174,12 +174,12 @@ def compute_interval_coverage(
         Coverage fraction (0-1).
     """
     within = (y_true >= lower) & (y_true <= upper)
-    return np.mean(within)
+    return float(np.mean(within))
 
 
 def compute_interval_width(lower: np.ndarray, upper: np.ndarray) -> float:
     """Compute average prediction interval width."""
-    return np.mean(upper - lower)
+    return float(np.mean(upper - lower))
 
 
 class ClassificationEvaluator:
@@ -207,7 +207,7 @@ class ClassificationEvaluator:
         y_pred = model.predict(X_test)
 
         if class_names is None:
-            if hasattr(model, 'classes_'):
+            if hasattr(model, "classes_"):
                 class_names = [str(c) for c in model.classes_]
             else:
                 class_names = [str(c) for c in np.unique(y_test)]
@@ -218,12 +218,12 @@ class ClassificationEvaluator:
             return ClassificationMetrics(
                 accuracy=accuracy_score(y_test, y_pred),
                 balanced_accuracy=balanced_accuracy_score(y_test, y_pred),
-                precision=precision_score(y_test, y_pred, average='weighted', zero_division=0),
-                recall=recall_score(y_test, y_pred, average='weighted', zero_division=0),
-                f1_score=f1_score(y_test, y_pred, average='weighted', zero_division=0),
+                precision=precision_score(y_test, y_pred, average="weighted", zero_division=0),
+                recall=recall_score(y_test, y_pred, average="weighted", zero_division=0),
+                f1_score=f1_score(y_test, y_pred, average="weighted", zero_division=0),
                 confusion_matrix=confusion_matrix(y_test, y_pred),
                 class_names=class_names,
-                report=classification_report(y_test, y_pred, target_names=class_names, zero_division=0)
+                report=classification_report(y_test, y_pred, target_names=class_names, zero_division=0),
             )
 
 
@@ -259,13 +259,7 @@ class RegressionEvaluator:
         if np.any(nonzero_mask):
             mape = np.mean(np.abs((y_test[nonzero_mask] - y_pred[nonzero_mask]) / y_test[nonzero_mask])) * 100
 
-        return RegressionMetrics(
-            mse=mse,
-            rmse=np.sqrt(mse),
-            mae=mae,
-            r2=r2,
-            mape=mape
-        )
+        return RegressionMetrics(mse=mse, rmse=np.sqrt(mse), mae=mae, r2=r2, mape=mape)
 
 
 def evaluate_classifier(

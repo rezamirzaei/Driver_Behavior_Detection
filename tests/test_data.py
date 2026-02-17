@@ -45,24 +45,20 @@ class TestUAHDataLoader:
         if not Path(data_dir).exists():
             pytest.skip("UAH data not available")
 
-        dataset = load_uah_driveset(data_dir, drivers=['D1'], behaviors=['NORMAL'])
+        dataset = load_uah_driveset(data_dir, drivers=["D1"], behaviors=["NORMAL"])
 
         assert dataset.n_samples > 0
         # All behaviors should be NORMAL
         unique_behaviors = dataset.y.unique()
         assert len(unique_behaviors) == 1
-        assert unique_behaviors[0] == 'NORMAL'
+        assert unique_behaviors[0] == "NORMAL"
 
     def test_load_regression(self, data_dir):
         """Test loading for regression task."""
         if not Path(data_dir).exists():
             pytest.skip("UAH data not available")
 
-        dataset = load_uah_driveset(
-            data_dir,
-            task='regression',
-            target_variable='score_total'
-        )
+        dataset = load_uah_driveset(data_dir, task="regression", target_variable="score_total")
 
         assert isinstance(dataset, Dataset)
         assert dataset.info.task_type == "regression"
@@ -79,17 +75,15 @@ class TestSplitter:
         import numpy as np
         import pandas as pd
 
-        X = pd.DataFrame(np.random.randn(100, 5), columns=[f'f{i}' for i in range(5)])
-        y = pd.Series(['A'] * 50 + ['B'] * 50)
+        X = pd.DataFrame(np.random.randn(100, 5), columns=[f"f{i}" for i in range(5)])
+        y = pd.Series(["A"] * 50 + ["B"] * 50)
 
         return Dataset(
-            X=X, y=y,
+            X=X,
+            y=y,
             feature_names=list(X.columns),
-            target_name='target',
-            info=DatasetInfo(
-                name="test", n_samples=100, n_features=5,
-                task_type="classification"
-            )
+            target_name="target",
+            info=DatasetInfo(name="test", n_samples=100, n_features=5, task_type="classification"),
         )
 
     def test_split_data(self, sample_dataset):
@@ -105,8 +99,8 @@ class TestSplitter:
         split = split_data(sample_dataset, test_size=0.2, stratify=True)
 
         # Check class proportions are preserved
-        train_prop = (split.y_train == 'A').sum() / len(split.y_train)
-        test_prop = (split.y_test == 'A').sum() / len(split.y_test)
+        train_prop = (split.y_train == "A").sum() / len(split.y_train)
+        test_prop = (split.y_test == "A").sum() / len(split.y_test)
 
         assert abs(train_prop - test_prop) < 0.1
 

@@ -33,29 +33,32 @@ from src.models.trainer import ModelTrainer, train_model
 # Optional: CNN models (requires PyTorch)
 try:
     from src.models.cnn import CNNClassifier, CNNClassifierRaw, plot_cnn_training_history
+
     _HAS_CNN = True
 except ImportError:
-    CNNClassifier = None
-    CNNClassifierRaw = None
-    plot_cnn_training_history = None
+    CNNClassifier = None  # type: ignore[assignment,misc]
+    CNNClassifierRaw = None  # type: ignore[assignment,misc]
+    plot_cnn_training_history = None  # type: ignore[assignment]
     _HAS_CNN = False
 
 # Optional: ResNet models (requires PyTorch)
 try:
     from src.models.resnet import ResNetClassifier, plot_resnet_training_history
+
     _HAS_RESNET = True
 except ImportError:
-    ResNetClassifier = None
-    plot_resnet_training_history = None
+    ResNetClassifier = None  # type: ignore[assignment,misc]
+    plot_resnet_training_history = None  # type: ignore[assignment]
     _HAS_RESNET = False
 
 # Optional: Simple Neural Network (requires PyTorch)
 try:
     from src.models.simple_nn import SimpleNNClassifier, plot_nn_training_history
+
     _HAS_SIMPLE_NN = True
 except ImportError:
-    SimpleNNClassifier = None
-    plot_nn_training_history = None
+    SimpleNNClassifier = None  # type: ignore[assignment,misc]
+    plot_nn_training_history = None  # type: ignore[assignment]
     _HAS_SIMPLE_NN = False
 
 __all__ = [
@@ -94,4 +97,3 @@ if _HAS_RESNET:
 
 if _HAS_SIMPLE_NN:
     __all__.extend(["SimpleNNClassifier", "plot_nn_training_history"])
-

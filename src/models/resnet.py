@@ -39,14 +39,12 @@ class ResidualBlock1D(nn.Module):
 
         padding = kernel_size // 2
 
-        self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size,
-                               stride=stride, padding=padding)
+        self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
         self.bn1 = nn.BatchNorm1d(out_channels)
         self.elu1 = nn.ELU(inplace=True)
         self.dropout1 = nn.Dropout(dropout)
 
-        self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size,
-                               stride=1, padding=padding)
+        self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size, stride=1, padding=padding)
         self.bn2 = nn.BatchNorm1d(out_channels)
         self.dropout2 = nn.Dropout(dropout)
 
@@ -54,8 +52,7 @@ class ResidualBlock1D(nn.Module):
         self.skip = nn.Identity()
         if stride != 1 or in_channels != out_channels:
             self.skip = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size=1, stride=stride),
-                nn.BatchNorm1d(out_channels)
+                nn.Conv1d(in_channels, out_channels, kernel_size=1, stride=stride), nn.BatchNorm1d(out_channels)
             )
 
         self.elu2 = nn.ELU(inplace=True)
@@ -111,8 +108,7 @@ class ResNet1D(nn.Module):
             actual_kernel = max(1, actual_kernel - 1)  # Ensure odd kernel
 
         # Initial convolution
-        self.conv_initial = nn.Conv1d(1, n_filters, actual_kernel,
-                                       padding=actual_kernel // 2)
+        self.conv_initial = nn.Conv1d(1, n_filters, actual_kernel, padding=actual_kernel // 2)
         self.bn_initial = nn.BatchNorm1d(n_filters)
         self.elu_initial = nn.ELU(inplace=True)
         self.dropout_initial = nn.Dropout(dropout * 0.5)
@@ -122,8 +118,7 @@ class ResNet1D(nn.Module):
         in_ch = n_filters
         for i in range(n_blocks):
             out_ch = n_filters * (2 ** min(i, 2))  # Cap at 4x initial filters
-            blocks.append(ResidualBlock1D(in_ch, out_ch, actual_kernel,
-                                          stride=1, dropout=dropout))
+            blocks.append(ResidualBlock1D(in_ch, out_ch, actual_kernel, stride=1, dropout=dropout))
             in_ch = out_ch
         self.res_blocks = nn.Sequential(*blocks)
 
@@ -144,14 +139,14 @@ class ResNet1D(nn.Module):
         """Initialize weights with proper schemes."""
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.BatchNorm1d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -258,15 +253,17 @@ class ResNetClassifier(BaseEstimator, ClassifierMixin):
             return torch.device(self.device)
 
         if torch.cuda.is_available():
-            return torch.device('cuda')
-        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            return torch.device('mps')
+            return torch.device("cuda")
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return torch.device("mps")
         else:
-            return torch.device('cpu')
+            return torch.device("cpu")
 
-    def _prepare_data(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def _prepare_data(
+        self, X: np.ndarray, y: Optional[np.ndarray] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Prepare data for PyTorch."""
-        if hasattr(X, 'values'):
+        if hasattr(X, "values"):
             X = X.values
 
         X = X.astype(np.float32)
@@ -278,7 +275,7 @@ class ResNetClassifier(BaseEstimator, ClassifierMixin):
         X_tensor = torch.from_numpy(X)
 
         if y is not None:
-            if hasattr(y, 'values'):
+            if hasattr(y, "values"):
                 y = y.values
             y = y.astype(np.int64)
             y_tensor = torch.from_numpy(y)
@@ -286,7 +283,7 @@ class ResNetClassifier(BaseEstimator, ClassifierMixin):
 
         return X_tensor, None
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'ResNetClassifier':
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "ResNetClassifier":
         """
         Fit the ResNet classifier.
 
@@ -307,7 +304,7 @@ class ResNetClassifier(BaseEstimator, ClassifierMixin):
             print(f"🔧 Training ResNet on device: {self.device_}")
 
         # Encode labels
-        if y.dtype == 'object' or (len(y) > 0 and isinstance(y[0], str)):
+        if y.dtype == "object" or (len(y) > 0 and isinstance(y[0], str)):
             y_encoded = self.le_.fit_transform(y)
         else:
             y_encoded = y.copy()
@@ -358,26 +355,20 @@ class ResNetClassifier(BaseEstimator, ClassifierMixin):
 
         # Loss and optimizer with weight decay
         criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
-        optimizer = optim.AdamW(
-            self.model_.parameters(),
-            lr=self.learning_rate,
-            weight_decay=self.weight_decay
-        )
+        optimizer = optim.AdamW(self.model_.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
         # Learning rate scheduler
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=5, verbose=False
-        )
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5, verbose=False)
 
         # Training history
         self.history_ = {
-            'train_loss': [],
-            'train_acc': [],
-            'val_loss': [],
-            'val_acc': [],
+            "train_loss": [],
+            "train_acc": [],
+            "val_loss": [],
+            "val_acc": [],
         }
 
-        best_val_loss = float('inf')
+        best_val_loss = float("inf")
         patience_counter = 0
         best_model_state = None
 
@@ -437,10 +428,10 @@ class ResNetClassifier(BaseEstimator, ClassifierMixin):
             scheduler.step(val_loss)
 
             # Store history
-            self.history_['train_loss'].append(train_loss)
-            self.history_['train_acc'].append(train_acc)
-            self.history_['val_loss'].append(val_loss)
-            self.history_['val_acc'].append(val_acc)
+            self.history_["train_loss"].append(train_loss)
+            self.history_["train_acc"].append(train_acc)
+            self.history_["val_loss"].append(val_loss)
+            self.history_["val_acc"].append(val_acc)
 
             # Early stopping check
             if val_loss < best_val_loss:
@@ -451,13 +442,15 @@ class ResNetClassifier(BaseEstimator, ClassifierMixin):
                 patience_counter += 1
 
             if self.verbose > 0 and (epoch + 1) % 10 == 0:
-                print(f"  Epoch {epoch+1}/{self.epochs}: "
-                      f"Train Loss={train_loss:.4f}, Train Acc={train_acc:.4f}, "
-                      f"Val Loss={val_loss:.4f}, Val Acc={val_acc:.4f}")
+                print(
+                    f"  Epoch {epoch + 1}/{self.epochs}: "
+                    f"Train Loss={train_loss:.4f}, Train Acc={train_acc:.4f}, "
+                    f"Val Loss={val_loss:.4f}, Val Acc={val_acc:.4f}"
+                )
 
             if patience_counter >= self.early_stopping_patience:
                 if self.verbose > 0:
-                    print(f"  Early stopping at epoch {epoch+1}")
+                    print(f"  Early stopping at epoch {epoch + 1}")
                 break
 
         # Load best model
@@ -466,8 +459,8 @@ class ResNetClassifier(BaseEstimator, ClassifierMixin):
             self.model_ = self.model_.to(self.device_)
 
         if self.verbose > 0:
-            final_train_acc = self.history_['train_acc'][-1] if self.history_['train_acc'] else 0
-            final_val_acc = self.history_['val_acc'][-1] if self.history_['val_acc'] else 0
+            final_train_acc = self.history_["train_acc"][-1] if self.history_["train_acc"] else 0
+            final_val_acc = self.history_["val_acc"][-1] if self.history_["val_acc"] else 0
             print(f"✅ Training complete. Best Val Loss: {best_val_loss:.4f}")
             print(f"   Final Train Acc: {final_train_acc:.4f}, Final Val Acc: {final_val_acc:.4f}")
 
@@ -501,7 +494,7 @@ class ResNetClassifier(BaseEstimator, ClassifierMixin):
     def score(self, X: np.ndarray, y: np.ndarray) -> float:
         """Calculate accuracy score."""
         y_pred = self.predict(X)
-        if y.dtype == 'object' or (len(y) > 0 and isinstance(y[0], str)):
+        if y.dtype == "object" or (len(y) > 0 and isinstance(y[0], str)):
             return float(np.mean(y_pred == y))
         else:
             return float(np.mean(self.le_.transform(y_pred) == y))
@@ -519,23 +512,23 @@ def plot_resnet_training_history(history: Dict[str, List[float]], save_path: Opt
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-    epochs = range(1, len(history['train_loss']) + 1)
+    epochs = range(1, len(history["train_loss"]) + 1)
 
     # Loss plot
-    axes[0].plot(epochs, history['train_loss'], 'b-', label='Training Loss', linewidth=2)
-    axes[0].plot(epochs, history['val_loss'], 'r-', label='Validation Loss', linewidth=2)
-    axes[0].set_xlabel('Epoch', fontsize=12)
-    axes[0].set_ylabel('Loss', fontsize=12)
-    axes[0].set_title('ResNet: Training and Validation Loss', fontweight='bold', fontsize=14)
+    axes[0].plot(epochs, history["train_loss"], "b-", label="Training Loss", linewidth=2)
+    axes[0].plot(epochs, history["val_loss"], "r-", label="Validation Loss", linewidth=2)
+    axes[0].set_xlabel("Epoch", fontsize=12)
+    axes[0].set_ylabel("Loss", fontsize=12)
+    axes[0].set_title("ResNet: Training and Validation Loss", fontweight="bold", fontsize=14)
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
 
     # Accuracy plot
-    axes[1].plot(epochs, history['train_acc'], 'b-', label='Training Accuracy', linewidth=2)
-    axes[1].plot(epochs, history['val_acc'], 'r-', label='Validation Accuracy', linewidth=2)
-    axes[1].set_xlabel('Epoch', fontsize=12)
-    axes[1].set_ylabel('Accuracy', fontsize=12)
-    axes[1].set_title('ResNet: Training and Validation Accuracy', fontweight='bold', fontsize=14)
+    axes[1].plot(epochs, history["train_acc"], "b-", label="Training Accuracy", linewidth=2)
+    axes[1].plot(epochs, history["val_acc"], "r-", label="Validation Accuracy", linewidth=2)
+    axes[1].set_xlabel("Epoch", fontsize=12)
+    axes[1].set_ylabel("Accuracy", fontsize=12)
+    axes[1].set_title("ResNet: Training and Validation Accuracy", fontweight="bold", fontsize=14)
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
     axes[1].set_ylim(0, 1.05)
@@ -543,10 +536,9 @@ def plot_resnet_training_history(history: Dict[str, List[float]], save_path: Opt
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='white')
+        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
     else:
         plt.show()
 
     return fig
-

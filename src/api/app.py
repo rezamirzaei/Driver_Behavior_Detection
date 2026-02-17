@@ -1,21 +1,21 @@
 """FastAPI backend API for serving ML project data."""
 
 import base64
+from contextlib import asynccontextmanager
 import io
 import logging
 import pathlib
-from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402 – must follow matplotlib.use()
-import numpy as np
-import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+import matplotlib.pyplot as plt  # noqa: E402 – must follow matplotlib.use()
+import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
@@ -77,20 +77,34 @@ FEATURE_DESCRIPTIONS: Dict[str, str] = {
 
 API_MODELS: Dict[str, Any] = {
     "Random Forest": lambda: RandomForestClassifier(
-        n_estimators=100, max_depth=10, class_weight="balanced",
-        random_state=42, n_jobs=-1,
+        n_estimators=100,
+        max_depth=10,
+        class_weight="balanced",
+        random_state=42,
+        n_jobs=-1,
     ),
     "Gradient Boosting": lambda: GradientBoostingClassifier(
-        n_estimators=100, max_depth=5, random_state=42,
+        n_estimators=100,
+        max_depth=5,
+        random_state=42,
     ),
     "Logistic (L2)": lambda: LogisticRegression(
-        penalty="l2", class_weight="balanced", max_iter=1000, random_state=42,
+        penalty="l2",
+        class_weight="balanced",
+        max_iter=1000,
+        random_state=42,
     ),
     "SVM (RBF)": lambda: SVC(
-        kernel="rbf", class_weight="balanced", random_state=42, probability=True,
+        kernel="rbf",
+        class_weight="balanced",
+        random_state=42,
+        probability=True,
     ),
     "KNN (k=5)": lambda: KNeighborsClassifier(
-        n_neighbors=5, weights="distance", metric="euclidean", n_jobs=-1,
+        n_neighbors=5,
+        weights="distance",
+        metric="euclidean",
+        n_jobs=-1,
     ),
 }
 
@@ -120,9 +134,7 @@ def _load_data() -> None:
         return_driver_info=True,
     )
 
-    _feature_cols = [
-        c for c in _dataset.feature_names if c != "driver"
-    ]
+    _feature_cols = [c for c in _dataset.feature_names if c != "driver"]
 
     # Build a combined DataFrame for analysis / plotting
     _df = _dataset.X.copy()
@@ -130,12 +142,16 @@ def _load_data() -> None:
 
     # Driver-aware split
     _X_train, _X_test, _y_train, _y_test = split_by_driver(
-        _dataset.X, _dataset.y, test_drivers=["D6"],
+        _dataset.X,
+        _dataset.y,
+        test_drivers=["D6"],
     )
     _class_names = sorted(_dataset.y.unique().tolist())
     logger.info(
         "Dataset loaded: %d samples, %d features, classes=%s",
-        len(_dataset.y), len(_feature_cols), _class_names,
+        len(_dataset.y),
+        len(_feature_cols),
+        _class_names,
     )
 
 
@@ -192,12 +208,7 @@ def health_check():
 @app.get("/api/features")
 def list_features():
     """List all available features with descriptions."""
-    return {
-        "features": [
-            {"name": f, "description": FEATURE_DESCRIPTIONS.get(f, "")}
-            for f in ALLOWED_FEATURES
-        ]
-    }
+    return {"features": [{"name": f, "description": FEATURE_DESCRIPTIONS.get(f, "")} for f in ALLOWED_FEATURES]}
 
 
 @app.post("/api/feature", response_model=FeatureResponse)
@@ -262,8 +273,12 @@ def get_two_feature_comparison(req: TwoFeatureRequest):
         for label in sorted(_df["behavior"].unique()):
             subset = _df[_df["behavior"] == label]
             ax.scatter(
-                subset[req.feature1], subset[req.feature2],
-                label=str(label), alpha=0.7, edgecolors="white", linewidth=0.5,
+                subset[req.feature1],
+                subset[req.feature2],
+                label=str(label),
+                alpha=0.7,
+                edgecolors="white",
+                linewidth=0.5,
                 color=color_map.get(str(label), None),
             )
         ax.set_xlabel(req.feature1)
@@ -276,10 +291,7 @@ def get_two_feature_comparison(req: TwoFeatureRequest):
         fig.tight_layout()
         plot_url = plot_to_base64(fig)
 
-        explanation = (
-            f"Pearson correlation between {req.feature1} and {req.feature2} "
-            f"is {corr_val:.4f}. "
-        )
+        explanation = f"Pearson correlation between {req.feature1} and {req.feature2} is {corr_val:.4f}. "
         if abs(corr_val) > 0.8:
             explanation += "These features are highly correlated."
         elif abs(corr_val) > 0.5:
@@ -314,14 +326,10 @@ def get_correlation_matrix():
         corr_matrix = _df[_feature_cols].corr()
         matrix_list = corr_matrix.values.tolist()
 
-        high_pairs = [
-            [f1, f2, str(round(c, 4))]
-            for f1, f2, c in analysis.high_correlation_pairs
-        ]
+        high_pairs = [[f1, f2, str(round(c, 4))] for f1, f2, c in analysis.high_correlation_pairs]
 
         explanation = (
-            f"Correlation matrix for {len(_feature_cols)} features. "
-            f"{len(high_pairs)} pair(s) with |r| > 0.8. "
+            f"Correlation matrix for {len(_feature_cols)} features. {len(high_pairs)} pair(s) with |r| > 0.8. "
         )
         if analysis.multicollinearity_warning:
             explanation += "⚠️ Severe multicollinearity detected (|r| > 0.9)."
@@ -341,14 +349,17 @@ def get_correlation_matrix():
 @app.post("/api/model/confusion-matrix", response_model=ConfusionMatrixResponse)
 def get_confusion_matrix(req: ModelRequest):
     """Train a model and return its confusion matrix."""
-    if _X_train is None:
+    if _X_train is None or _X_test is None or _y_train is None or _y_test is None:
         raise HTTPException(status_code=503, detail="Dataset not loaded")
 
     try:
         model = API_MODELS[req.model_name]()
         model.fit(_X_train, _y_train)
         metrics: ClassificationMetrics = evaluate_classifier(
-            model, _X_test, _y_test, _class_names,
+            model,
+            _X_test,
+            _y_test,
+            _class_names,
         )
 
         fig = plot_confusion_matrix(metrics)
@@ -375,14 +386,17 @@ def compare_models():
     """Compare all available models and return results with a chart."""
     global _comparison
 
-    if _X_train is None:
+    if _X_train is None or _X_test is None or _y_train is None or _y_test is None:
         raise HTTPException(status_code=503, detail="Dataset not loaded")
 
     try:
         models = {name: fn() for name, fn in API_MODELS.items()}
 
         comparison = compare_classifiers(
-            _X_train, _y_train, _X_test, _y_test,
+            _X_train,
+            _y_train,
+            _X_test,
+            _y_test,
             models=models,
             class_names=_class_names,
             feature_names=_feature_cols,

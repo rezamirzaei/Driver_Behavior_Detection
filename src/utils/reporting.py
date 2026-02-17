@@ -31,29 +31,25 @@ def print_class_distribution_result(result: "ClassDistributionResult") -> None:
 
 def print_header(title: str, emoji: str = "📊", width: int = 60) -> None:
     """Print a formatted section header."""
-    print('\n' + '=' * width)
-    print(f'{emoji} {title.upper()}')
-    print('=' * width)
+    print("\n" + "=" * width)
+    print(f"{emoji} {title.upper()}")
+    print("=" * width)
 
 
-def print_subheader(title: str, char: str = '-', width: int = 40) -> None:
+def print_subheader(title: str, char: str = "-", width: int = 40) -> None:
     """Print a formatted subsection header."""
-    print(f'\n{char * width}')
-    print(f'  {title}')
-    print(f'{char * width}')
+    print(f"\n{char * width}")
+    print(f"  {title}")
+    print(f"{char * width}")
 
 
-def print_metrics(
-    accuracy: float,
-    f1_score: float,
-    additional: Optional[Dict[str, float]] = None
-) -> None:
+def print_metrics(accuracy: float, f1_score: float, additional: Optional[Dict[str, float]] = None) -> None:
     """Print model metrics in a clean format."""
-    print(f'  Accuracy: {accuracy:.4f}')
-    print(f'  F1-Score: {f1_score:.4f}')
+    print(f"  Accuracy: {accuracy:.4f}")
+    print(f"  F1-Score: {f1_score:.4f}")
     if additional:
         for name, value in additional.items():
-            print(f'  {name}: {value:.4f}')
+            print(f"  {name}: {value:.4f}")
 
 
 def print_classification_results(
@@ -63,29 +59,22 @@ def print_classification_results(
     y_true: np.ndarray,
     y_pred: np.ndarray,
     class_names: List[str],
-    emoji: str = "📊"
+    emoji: str = "📊",
 ) -> None:
     """Print complete classification results for a model."""
     print_header(model_name, emoji)
     print_metrics(accuracy, f1)
-    print('\n' + classification_report(y_true, y_pred, target_names=class_names))
+    print("\n" + classification_report(y_true, y_pred, target_names=class_names))
 
 
-def print_data_summary(
-    shape: Tuple[int, int],
-    target_col: str,
-    class_counts: pd.Series
-) -> None:
+def print_data_summary(shape: Tuple[int, int], target_col: str, class_counts: pd.Series) -> None:
     """Print a summary of loaded data."""
     print(f"📊 Loaded: {shape}")
     print(f"\n🎯 Classes:\n{class_counts}")
 
 
 def print_split_summary(
-    X_train_shape: Tuple[int, int],
-    X_test_shape: Tuple[int, int],
-    train_info: str = "",
-    test_info: str = ""
+    X_train_shape: Tuple[int, int], X_test_shape: Tuple[int, int], train_info: str = "", test_info: str = ""
 ) -> None:
     """Print train/test split summary."""
     print("\n✅ Split complete")
@@ -93,11 +82,7 @@ def print_split_summary(
     print(f"   Test: {X_test_shape} {test_info}")
 
 
-def print_training_analysis(
-    final_train_loss: float,
-    final_val_loss: float,
-    overfitting_threshold: float = 0.5
-) -> None:
+def print_training_analysis(final_train_loss: float, final_val_loss: float, overfitting_threshold: float = 0.5) -> None:
     """Print training convergence analysis."""
     overfitting_gap = final_val_loss - final_train_loss
 
@@ -113,13 +98,9 @@ def print_training_analysis(
         print("   ✅ Good generalization")
 
 
-def print_model_comparison(
-    comparison_df: pd.DataFrame,
-    metric_col: str = 'Accuracy',
-    model_col: str = 'Model'
-) -> str:
+def print_model_comparison(comparison_df: pd.DataFrame, metric_col: str = "Accuracy", model_col: str = "Model") -> str:
     """Print model comparison table and return best model name."""
-    print_header('MODEL COMPARISON', '🏆')
+    print_header("MODEL COMPARISON", "🏆")
     print(comparison_df.to_string(index=False))
 
     best_model = comparison_df.loc[comparison_df[metric_col].idxmax(), model_col]
@@ -128,13 +109,9 @@ def print_model_comparison(
     return best_model
 
 
-def print_confused_classes(
-    confusion_matrix: np.ndarray,
-    class_names: List[str],
-    threshold: float = 0.2
-) -> None:
+def print_confused_classes(confusion_matrix: np.ndarray, class_names: List[str], threshold: float = 0.2) -> None:
     """Print significantly confused class pairs from confusion matrix."""
-    cm_norm = confusion_matrix.astype('float') / confusion_matrix.sum(axis=1)[:, np.newaxis]
+    cm_norm = confusion_matrix.astype("float") / confusion_matrix.sum(axis=1)[:, np.newaxis]
 
     print("\n🔍 Most confused class pairs:")
     found_any = False
@@ -144,23 +121,16 @@ def print_confused_classes(
             if i != j and confusion_matrix[i, j] > 0:
                 confusion_rate = cm_norm[i, j]
                 if confusion_rate > threshold:
-                    print(f"   {class_names[i]} → {class_names[j]}: {confusion_rate*100:.1f}%")
+                    print(f"   {class_names[i]} → {class_names[j]}: {confusion_rate * 100:.1f}%")
                     found_any = True
 
     if not found_any:
         print("   No significant confusions (all < 20%)")
 
 
-def print_feature_importance(
-    feature_names: List[str],
-    importances: np.ndarray,
-    top_n: int = 10
-) -> pd.DataFrame:
+def print_feature_importance(feature_names: List[str], importances: np.ndarray, top_n: int = 10) -> pd.DataFrame:
     """Print top feature importances and return DataFrame."""
-    df = pd.DataFrame({
-        'feature': feature_names,
-        'importance': importances
-    }).sort_values('importance', ascending=False)
+    df = pd.DataFrame({"feature": feature_names, "importance": importances}).sort_values("importance", ascending=False)
 
     print(f"\n🎯 Top {top_n} Features:")
     print(df.head(top_n).to_string(index=False))
@@ -184,35 +154,27 @@ def print_info(message: str) -> None:
 
 
 def print_regression_results(
-    model_name: str,
-    r2: float,
-    rmse: float,
-    mae: float,
-    emoji: str = "📊",
-    baseline_r2: Optional[float] = None
+    model_name: str, r2: float, rmse: float, mae: float, emoji: str = "📊", baseline_r2: Optional[float] = None
 ) -> None:
     """Print complete regression results for a model."""
     print_header(model_name, emoji)
-    print(f'  R² Score: {r2:.4f} ← Higher = Better (Max = 1.0)')
-    print(f'  RMSE: {rmse:.4f} ← Lower = Better')
-    print(f'  MAE: {mae:.4f} ← Lower = Better')
+    print(f"  R² Score: {r2:.4f} ← Higher = Better (Max = 1.0)")
+    print(f"  RMSE: {rmse:.4f} ← Lower = Better")
+    print(f"  MAE: {mae:.4f} ← Lower = Better")
 
     if baseline_r2 is not None:
         improvement = (r2 - baseline_r2) * 100
-        print(f'\n  📈 Improvement over baseline: {improvement:.2f}% (R²)')
+        print(f"\n  📈 Improvement over baseline: {improvement:.2f}% (R²)")
 
     if r2 < 0.5:
-        print('\n  ⚠️ Low R² suggests poor fit or outlier effects')
+        print("\n  ⚠️ Low R² suggests poor fit or outlier effects")
     elif r2 >= 0.8:
-        print('\n  ✅ Excellent fit!')
+        print("\n  ✅ Excellent fit!")
     else:
-        print('\n  ✅ Good fit')
+        print("\n  ✅ Good fit")
 
 
-def print_target_statistics(
-    y: np.ndarray,
-    target_name: str = "Target"
-) -> None:
+def print_target_statistics(y: np.ndarray, target_name: str = "Target") -> None:
     """Print target variable statistics."""
     print(f"\n📊 {target_name} Statistics:")
     print(f"   Mean: {np.mean(y):.2f}")
@@ -231,12 +193,7 @@ def print_skewness_check(skewness: float, threshold: float = 1.0) -> None:
         print("\n✅ Target approximately normal")
 
 
-def print_outlier_analysis(
-    lower_bound: float,
-    upper_bound: float,
-    n_outliers: int,
-    total: int
-) -> None:
+def print_outlier_analysis(lower_bound: float, upper_bound: float, n_outliers: int, total: int) -> None:
     """Print outlier analysis results."""
     pct = n_outliers / total * 100
 
@@ -252,9 +209,7 @@ def print_outlier_analysis(
         print("\n✅ Few outliers")
 
 
-def print_residual_statistics(
-    residuals: np.ndarray
-) -> None:
+def print_residual_statistics(residuals: np.ndarray) -> None:
     """Print residual analysis statistics."""
     print("\n📊 Residual Statistics:")
     print(f"   Mean: {np.mean(residuals):.4f} (should be ~0)")
@@ -264,12 +219,10 @@ def print_residual_statistics(
 
 
 def print_regressor_comparison(
-    comparison_df: pd.DataFrame,
-    metric_col: str = 'R² Score',
-    model_col: str = 'Model'
+    comparison_df: pd.DataFrame, metric_col: str = "R² Score", model_col: str = "Model"
 ) -> str:
     """Print regression model comparison table and return best model name."""
-    print_header('MODEL COMPARISON', '🏆')
+    print_header("MODEL COMPARISON", "🏆")
     print(comparison_df.to_string(index=False))
 
     best_model = comparison_df.loc[comparison_df[metric_col].idxmax(), model_col]
@@ -278,10 +231,7 @@ def print_regressor_comparison(
     return best_model
 
 
-def print_feature_types(
-    numerical_cols: List[str],
-    categorical_cols: List[str]
-) -> None:
+def print_feature_types(numerical_cols: List[str], categorical_cols: List[str]) -> None:
     """Print summary of feature types."""
     print("\n📊 Feature Types:")
     print(f"   Numerical ({len(numerical_cols)}): {numerical_cols}")
@@ -289,9 +239,7 @@ def print_feature_types(
 
 
 def print_categorical_cardinality(
-    df: pd.DataFrame,
-    categorical_cols: List[str],
-    high_cardinality_threshold: int = 50
+    df: pd.DataFrame, categorical_cols: List[str], high_cardinality_threshold: int = 50
 ) -> List[str]:
     """
     Print cardinality of categorical features.
@@ -312,10 +260,7 @@ def print_categorical_cardinality(
     return low_cardinality
 
 
-def print_correlation_with_target(
-    correlations: pd.Series,
-    target_name: str = "target"
-) -> None:
+def print_correlation_with_target(correlations: pd.Series, target_name: str = "target") -> None:
     """Print correlations with target variable."""
     print(f"\n📊 Correlations with {target_name}:")
     for feat, corr in correlations.items():
@@ -323,10 +268,7 @@ def print_correlation_with_target(
         print(f"   {feat}: {corr:.3f} ({strength})")
 
 
-def print_high_correlation_pairs(
-    pairs: List[Tuple[str, str, float]],
-    threshold: float = 0.8
-) -> None:
+def print_high_correlation_pairs(pairs: List[Tuple[str, str, float]], threshold: float = 0.8) -> None:
     """Print highly correlated feature pairs (multicollinearity warning)."""
     if pairs:
         print(f"\n⚠️ High multicollinearity (|r| > {threshold}):")
@@ -338,11 +280,7 @@ def print_high_correlation_pairs(
 
 
 def print_save_confirmation(
-    path: str,
-    shape: Tuple[int, int],
-    target_name: str = "target",
-    n_numerical: int = 0,
-    n_categorical: int = 0
+    path: str, shape: Tuple[int, int], target_name: str = "target", n_numerical: int = 0, n_categorical: int = 0
 ) -> None:
     """Print data save confirmation."""
     print(f"\n💾 Saved to: {path}")
@@ -432,14 +370,16 @@ def print_feature_overview(
         else:
             decision = "Keep"
 
-        rows.append({
-            "Feature": col,
-            "Type": kind,
-            "Unique": n_unique,
-            "Missing%": round(missing_pct, 1),
-            "Corr(target)": round(corr, 3) if not np.isnan(corr) else "—",
-            "Decision": decision,
-        })
+        rows.append(
+            {
+                "Feature": col,
+                "Type": kind,
+                "Unique": n_unique,
+                "Missing%": round(missing_pct, 1),
+                "Corr(target)": round(corr, 3) if not np.isnan(corr) else "—",
+                "Decision": decision,
+            }
+        )
 
     summary = pd.DataFrame(rows)
 
@@ -456,4 +396,3 @@ def print_feature_overview(
     print(summary.to_string(index=False))
 
     return summary
-

@@ -22,7 +22,7 @@ Why these features?
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 import warnings
 
 import pandas as pd
@@ -56,18 +56,36 @@ class UAHDataLoader:
         try:
             # SEMANTIC_ONLINE has columns, last row is final summary
             online_cols = [
-                'timestamp', 'latitude', 'longitude',
-                'score_total_window', 'score_acc_window', 'score_brake_window',
-                'score_turn_window', 'score_weave_window', 'score_drift_window',
-                'score_speed_window', 'score_follow_window',
-                'ratio_normal_window', 'ratio_drowsy_window', 'ratio_aggressive_window',
-                'ratio_distracted_window',
-                'score_total', 'score_accelerations', 'score_brakings', 'score_turnings',
-                'score_weaving', 'score_drifting', 'score_overspeeding', 'score_following',
-                'ratio_normal', 'ratio_drowsy', 'ratio_aggressive', 'ratio_distracted'
+                "timestamp",
+                "latitude",
+                "longitude",
+                "score_total_window",
+                "score_acc_window",
+                "score_brake_window",
+                "score_turn_window",
+                "score_weave_window",
+                "score_drift_window",
+                "score_speed_window",
+                "score_follow_window",
+                "ratio_normal_window",
+                "ratio_drowsy_window",
+                "ratio_aggressive_window",
+                "ratio_distracted_window",
+                "score_total",
+                "score_accelerations",
+                "score_brakings",
+                "score_turnings",
+                "score_weaving",
+                "score_drifting",
+                "score_overspeeding",
+                "score_following",
+                "ratio_normal",
+                "ratio_drowsy",
+                "ratio_aggressive",
+                "ratio_distracted",
             ]
 
-            df = pd.read_csv(semantic_file, sep=r'\s+', names=online_cols, header=None)
+            df = pd.read_csv(semantic_file, sep=r"\s+", names=online_cols, header=None)
 
             if len(df) == 0:
                 return None
@@ -77,17 +95,17 @@ class UAHDataLoader:
 
             # Select relevant features
             features = {
-                'score_total': last_row.get('score_total', 0),
-                'score_accelerations': last_row.get('score_accelerations', 0),
-                'score_brakings': last_row.get('score_brakings', 0),
-                'score_turnings': last_row.get('score_turnings', 0),
-                'score_weaving': last_row.get('score_weaving', 0),
-                'score_drifting': last_row.get('score_drifting', 0),
-                'score_overspeeding': last_row.get('score_overspeeding', 0),
-                'score_following': last_row.get('score_following', 0),
-                'ratio_normal': last_row.get('ratio_normal', 0),
-                'ratio_drowsy': last_row.get('ratio_drowsy', 0),
-                'ratio_aggressive': last_row.get('ratio_aggressive', 0),
+                "score_total": last_row.get("score_total", 0),
+                "score_accelerations": last_row.get("score_accelerations", 0),
+                "score_brakings": last_row.get("score_brakings", 0),
+                "score_turnings": last_row.get("score_turnings", 0),
+                "score_weaving": last_row.get("score_weaving", 0),
+                "score_drifting": last_row.get("score_drifting", 0),
+                "score_overspeeding": last_row.get("score_overspeeding", 0),
+                "score_following": last_row.get("score_following", 0),
+                "ratio_normal": last_row.get("ratio_normal", 0),
+                "ratio_drowsy": last_row.get("ratio_drowsy", 0),
+                "ratio_aggressive": last_row.get("ratio_aggressive", 0),
             }
 
             return pd.Series(features)
@@ -101,9 +119,9 @@ class UAHDataLoader:
         drivers: Optional[List[str]] = None,
         behaviors: Optional[List[str]] = None,
         road_types: Optional[List[str]] = None,
-        task: str = "classification",
+        task: Literal["classification", "regression"] = "classification",
         target_variable: str = "behavior",
-        return_driver_info: bool = True  # Return driver ID for splitting
+        return_driver_info: bool = True,  # Return driver ID for splitting
     ) -> Dataset:
         """
         Load UAH-DriveSet dataset.
@@ -120,7 +138,7 @@ class UAHDataLoader:
             Dataset with features and target (and optionally driver info for splitting).
         """
         if drivers is None:
-            drivers = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6']
+            drivers = ["D1", "D2", "D3", "D4", "D5", "D6"]
 
         all_data = []
 
@@ -135,16 +153,16 @@ class UAHDataLoader:
 
                 # Parse folder name for metadata
                 folder_name = trip_folder.name
-                parts = folder_name.split('-')
+                parts = folder_name.split("-")
 
                 # Extract behavior and road type
                 behavior = None
                 road_type = None
 
                 for part in parts:
-                    if part in ['NORMAL', 'NORMAL1', 'NORMAL2', 'AGGRESSIVE', 'DROWSY']:
-                        behavior = part.replace('1', '').replace('2', '')
-                    elif part in ['MOTORWAY', 'SECONDARY']:
+                    if part in ["NORMAL", "NORMAL1", "NORMAL2", "AGGRESSIVE", "DROWSY"]:
+                        behavior = part.replace("1", "").replace("2", "")
+                    elif part in ["MOTORWAY", "SECONDARY"]:
                         road_type = part
 
                 if behavior is None:
@@ -159,9 +177,9 @@ class UAHDataLoader:
                 # Load trip summary
                 trip_data = self.load_trip_summary(trip_folder)
                 if trip_data is not None:
-                    trip_data['driver'] = driver
-                    trip_data['behavior'] = behavior
-                    trip_data['road_type'] = road_type
+                    trip_data["driver"] = driver
+                    trip_data["behavior"] = behavior
+                    trip_data["road_type"] = road_type
                     all_data.append(trip_data)
 
         if not all_data:
@@ -171,12 +189,12 @@ class UAHDataLoader:
 
         # Prepare features and target
         if task == "classification":
-             target_col = "behavior"
+            target_col = "behavior"
         else:
-             target_col = target_variable
+            target_col = target_variable
 
         # Define columns to exclude from features
-        metadata_cols = ['driver', 'behavior', 'road_type']
+        metadata_cols = ["driver", "behavior", "road_type"]
         drop_cols = []
 
         # Always drop the target from features
@@ -185,25 +203,26 @@ class UAHDataLoader:
 
         # If regression, also drop other scores to avoid leakage
         if task == "regression" and "score" in target_col:
-             score_cols = [c for c in df.columns if "score" in c and c != target_col]
-             drop_cols.extend(score_cols)
-             drop_cols.extend(['ratio_normal', 'ratio_drowsy', 'ratio_aggressive'])  # These are derived from scores
+            score_cols = [c for c in df.columns if "score" in c and c != target_col]
+            drop_cols.extend(score_cols)
+            drop_cols.extend(["ratio_normal", "ratio_drowsy", "ratio_aggressive"])  # These are derived from scores
 
         # Select only numeric features
-        feature_cols = [c for c in df.columns
-                       if c not in drop_cols
-                       and c not in metadata_cols
-                       and df[c].dtype in ['float64', 'int64']]
+        feature_cols = [
+            c
+            for c in df.columns
+            if c not in drop_cols and c not in metadata_cols and df[c].dtype in ["float64", "int64"]
+        ]
 
         X = df[feature_cols].copy()
         y = df[target_col].copy()
 
         # Keep driver info if requested (for proper train/test splitting)
         if return_driver_info:
-            X['driver'] = df['driver'].values
+            X["driver"] = df["driver"].values
 
         # Handle missing values
-        numeric_cols = [c for c in X.columns if c != 'driver']
+        numeric_cols = [c for c in X.columns if c != "driver"]
         X[numeric_cols] = X[numeric_cols].fillna(X[numeric_cols].median())
 
         info = DatasetInfo(
@@ -213,15 +232,15 @@ class UAHDataLoader:
             feature_names=feature_cols,
             target_name=target_col,
             task_type=task,
-            class_distribution=y.value_counts(normalize=True).to_dict() if task == "classification" else None
+            class_distribution=y.value_counts(normalize=True).to_dict() if task == "classification" else None,
         )
 
         return Dataset(
             X=X,
             y=y,
-            feature_names=feature_cols if not return_driver_info else feature_cols + ['driver'],
+            feature_names=feature_cols if not return_driver_info else feature_cols + ["driver"],
             target_name=target_col,
-            info=info
+            info=info,
         )
 
 
@@ -230,9 +249,9 @@ def load_uah_driveset(
     drivers: Optional[List[str]] = None,
     behaviors: Optional[List[str]] = None,
     road_types: Optional[List[str]] = None,
-    task: str = "classification",
+    task: Literal["classification", "regression"] = "classification",
     target_variable: str = "behavior",
-    return_driver_info: bool = True
+    return_driver_info: bool = True,
 ) -> Dataset:
     """
     Convenience function to load UAH-DriveSet.
@@ -253,5 +272,5 @@ def load_uah_driveset(
         road_types=road_types,
         task=task,
         target_variable=target_variable,
-        return_driver_info=return_driver_info
+        return_driver_info=return_driver_info,
     )

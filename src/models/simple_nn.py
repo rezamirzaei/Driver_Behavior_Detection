@@ -58,7 +58,7 @@ class SimpleNN(nn.Module):
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_in", nonlinearity="relu")
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -117,12 +117,12 @@ class SimpleNNClassifier(BaseEstimator, ClassifierMixin):
 
     def _get_device(self) -> torch.device:
         if torch.cuda.is_available():
-            return torch.device('cuda')
-        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            return torch.device('mps')
-        return torch.device('cpu')
+            return torch.device("cuda")
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> 'SimpleNNClassifier':
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "SimpleNNClassifier":
         """Fit the neural network classifier."""
         # Set seeds
         torch.manual_seed(self.random_state)
@@ -133,16 +133,16 @@ class SimpleNNClassifier(BaseEstimator, ClassifierMixin):
             print(f"🔧 Training SimpleNN on device: {self.device_}")
 
         # Convert to numpy
-        if hasattr(X, 'values'):
+        if hasattr(X, "values"):
             X = X.values
-        if hasattr(y, 'values'):
+        if hasattr(y, "values"):
             y = y.values
 
         # CRITICAL: Normalize input data
         X_normalized = self.scaler_.fit_transform(X).astype(np.float32)
 
         # Encode labels
-        if y.dtype == 'object' or isinstance(y[0], str):
+        if y.dtype == "object" or isinstance(y[0], str):
             y_encoded = self.le_.fit_transform(y)
         else:
             y_encoded = y.copy()
@@ -161,16 +161,8 @@ class SimpleNNClassifier(BaseEstimator, ClassifierMixin):
         X_val = torch.FloatTensor(X_normalized[indices[:n_val]])
         y_val = torch.LongTensor(y_encoded[indices[:n_val]])
 
-        train_loader = DataLoader(
-            TensorDataset(X_train, y_train),
-            batch_size=self.batch_size,
-            shuffle=True
-        )
-        val_loader = DataLoader(
-            TensorDataset(X_val, y_val),
-            batch_size=self.batch_size,
-            shuffle=False
-        )
+        train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=self.batch_size, shuffle=True)
+        val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=self.batch_size, shuffle=False)
 
         # Build model
         self.model_ = SimpleNN(
@@ -185,21 +177,13 @@ class SimpleNNClassifier(BaseEstimator, ClassifierMixin):
         class_weights = 1.0 / (class_counts + 1e-6)
         class_weights = class_weights / class_weights.sum() * len(class_weights)
 
-        criterion = nn.CrossEntropyLoss(
-            weight=torch.FloatTensor(class_weights).to(self.device_)
-        )
-        optimizer = optim.Adam(
-            self.model_.parameters(),
-            lr=self.learning_rate,
-            weight_decay=self.weight_decay
-        )
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=5
-        )
+        criterion = nn.CrossEntropyLoss(weight=torch.FloatTensor(class_weights).to(self.device_))
+        optimizer = optim.Adam(self.model_.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
 
         # Training
-        self.history_ = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
-        best_val_loss = float('inf')
+        self.history_ = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+        best_val_loss = float("inf")
         patience_counter = 0
         best_state = None
 
@@ -248,15 +232,17 @@ class SimpleNNClassifier(BaseEstimator, ClassifierMixin):
 
             scheduler.step(val_loss)
 
-            self.history_['train_loss'].append(train_loss)
-            self.history_['train_acc'].append(train_acc)
-            self.history_['val_loss'].append(val_loss)
-            self.history_['val_acc'].append(val_acc)
+            self.history_["train_loss"].append(train_loss)
+            self.history_["train_acc"].append(train_acc)
+            self.history_["val_loss"].append(val_loss)
+            self.history_["val_acc"].append(val_acc)
 
             if self.verbose and (epoch + 1) % 10 == 0:
-                print(f"  Epoch {epoch+1}/{self.epochs}: "
-                      f"Train Loss={train_loss:.4f}, Train Acc={train_acc:.4f}, "
-                      f"Val Loss={val_loss:.4f}, Val Acc={val_acc:.4f}")
+                print(
+                    f"  Epoch {epoch + 1}/{self.epochs}: "
+                    f"Train Loss={train_loss:.4f}, Train Acc={train_acc:.4f}, "
+                    f"Val Loss={val_loss:.4f}, Val Acc={val_acc:.4f}"
+                )
 
             # Early stopping
             if val_loss < best_val_loss:
@@ -268,7 +254,7 @@ class SimpleNNClassifier(BaseEstimator, ClassifierMixin):
 
             if patience_counter >= self.early_stopping_patience:
                 if self.verbose:
-                    print(f"  Early stopping at epoch {epoch+1}")
+                    print(f"  Early stopping at epoch {epoch + 1}")
                 break
 
         if best_state:
@@ -288,7 +274,7 @@ class SimpleNNClassifier(BaseEstimator, ClassifierMixin):
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """Predict class probabilities."""
-        if hasattr(X, 'values'):
+        if hasattr(X, "values"):
             X = X.values
 
         # CRITICAL: Apply same normalization as training
@@ -306,7 +292,7 @@ class SimpleNNClassifier(BaseEstimator, ClassifierMixin):
     def score(self, X: np.ndarray, y: np.ndarray) -> float:
         """Calculate accuracy."""
         y_pred = self.predict(X)
-        if hasattr(y, 'values'):
+        if hasattr(y, "values"):
             y = y.values
         return float(np.mean(y_pred == y))
 
@@ -320,49 +306,50 @@ def plot_nn_training_history(history: Dict[str, List[float]], save_path: Optiona
     import matplotlib.pyplot as plt
 
     # Set consistent style
-    plt.style.use('seaborn-v0_8-whitegrid')
-    plt.rcParams.update({
-        'figure.facecolor': 'white',
-        'axes.facecolor': 'white',
-        'savefig.facecolor': 'white',
-        'font.size': 11,
-        'axes.titlesize': 13,
-        'axes.labelsize': 11,
-    })
+    plt.style.use("seaborn-v0_8-whitegrid")
+    plt.rcParams.update(
+        {
+            "figure.facecolor": "white",
+            "axes.facecolor": "white",
+            "savefig.facecolor": "white",
+            "font.size": 11,
+            "axes.titlesize": 13,
+            "axes.labelsize": 11,
+        }
+    )
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    epochs = range(1, len(history['train_loss']) + 1)
+    epochs = range(1, len(history["train_loss"]) + 1)
 
     # Loss
-    axes[0].plot(epochs, history['train_loss'], 'b-', label='Training Loss', linewidth=2)
-    axes[0].plot(epochs, history['val_loss'], 'r-', label='Validation Loss', linewidth=2)
-    axes[0].set_xlabel('Epoch', fontsize=12)
-    axes[0].set_ylabel('Loss', fontsize=12)
-    axes[0].set_title('Training and Validation Loss', fontweight='bold', fontsize=13)
+    axes[0].plot(epochs, history["train_loss"], "b-", label="Training Loss", linewidth=2)
+    axes[0].plot(epochs, history["val_loss"], "r-", label="Validation Loss", linewidth=2)
+    axes[0].set_xlabel("Epoch", fontsize=12)
+    axes[0].set_ylabel("Loss", fontsize=12)
+    axes[0].set_title("Training and Validation Loss", fontweight="bold", fontsize=13)
     axes[0].legend(fontsize=11)
     axes[0].set_xlim(1, len(epochs))
 
     # Accuracy
-    axes[1].plot(epochs, history['train_acc'], 'b-', label='Training Accuracy', linewidth=2)
-    axes[1].plot(epochs, history['val_acc'], 'r-', label='Validation Accuracy', linewidth=2)
-    axes[1].set_xlabel('Epoch', fontsize=12)
-    axes[1].set_ylabel('Accuracy', fontsize=12)
-    axes[1].set_title('Training and Validation Accuracy', fontweight='bold', fontsize=13)
+    axes[1].plot(epochs, history["train_acc"], "b-", label="Training Accuracy", linewidth=2)
+    axes[1].plot(epochs, history["val_acc"], "r-", label="Validation Accuracy", linewidth=2)
+    axes[1].set_xlabel("Epoch", fontsize=12)
+    axes[1].set_ylabel("Accuracy", fontsize=12)
+    axes[1].set_title("Training and Validation Accuracy", fontweight="bold", fontsize=13)
     axes[1].legend(fontsize=11)
     axes[1].set_ylim(0, 1.05)
     axes[1].set_xlim(1, len(epochs))
 
     # Add final accuracy annotation
-    final_val = history['val_acc'][-1]
-    axes[1].axhline(y=final_val, color='r', linestyle='--', alpha=0.5)
-    axes[1].text(len(epochs)*0.7, final_val + 0.03, f'Final Val: {final_val:.3f}', fontsize=10)
+    final_val = history["val_acc"][-1]
+    axes[1].axhline(y=final_val, color="r", linestyle="--", alpha=0.5)
+    axes[1].text(len(epochs) * 0.7, final_val + 0.03, f"Final Val: {final_val:.3f}", fontsize=10)
 
-    plt.suptitle('Neural Network Training (with Data Normalization)', fontsize=14, fontweight='bold')
+    plt.suptitle("Neural Network Training (with Data Normalization)", fontsize=14, fontweight="bold")
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='white', edgecolor='none')
+        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="white", edgecolor="none")
         plt.close()
 
     return fig
-

@@ -24,26 +24,54 @@ class EPADataLoader:
     #   - id, createdOn, modifiedOn (metadata)
     KEEP_COLS = [
         # Target
-        'comb08',
+        "comb08",
         # Vehicle identification
-        'year', 'make', 'model',
+        "year",
+        "make",
+        "model",
         # Vehicle class & body
-        'VClass', 'sCharger', 'tCharger', 'atvType',
+        "VClass",
+        "sCharger",
+        "tCharger",
+        "atvType",
         # Drivetrain
-        'drive', 'trany', 'trans_dscr',
+        "drive",
+        "trany",
+        "trans_dscr",
         # Engine
-        'cylinders', 'displ', 'eng_dscr', 'engId',
+        "cylinders",
+        "displ",
+        "eng_dscr",
+        "engId",
         # Fuel
-        'fuelType', 'fuelType1', 'fuelType2',
+        "fuelType",
+        "fuelType1",
+        "fuelType2",
         # Electric/Hybrid
-        'evMotor', 'mfrCode', 'c240Dscr', 'charge240b', 'c240bDscr',
+        "evMotor",
+        "mfrCode",
+        "c240Dscr",
+        "charge240b",
+        "c240bDscr",
         # Range
-        'range', 'rangeCity', 'rangeHwy', 'rangeA',
+        "range",
+        "rangeCity",
+        "rangeHwy",
+        "rangeA",
         # Physical
-        'hlv', 'hpv', 'lv2', 'lv4', 'pv2', 'pv4',  # cargo volumes
-        'startStop', 'phevBlended',
+        "hlv",
+        "hpv",
+        "lv2",
+        "lv4",
+        "pv2",
+        "pv4",  # cargo volumes
+        "startStop",
+        "phevBlended",
         # Certifications
-        'guzzler', 'phevCity', 'phevHwy', 'phevComb',
+        "guzzler",
+        "phevCity",
+        "phevHwy",
+        "phevComb",
     ]
 
     def load(
@@ -79,12 +107,12 @@ class EPADataLoader:
 
         # Filter by year
         if year_min:
-            df = df[df['year'] >= year_min]
+            df = df[df["year"] >= year_min]
         if year_max:
-            df = df[df['year'] <= year_max]
+            df = df[df["year"] <= year_max]
 
         # Drop rows with missing target
-        target_col = 'comb08'
+        target_col = "comb08"
         df = df.dropna(subset=[target_col])
 
         # Drop unrealistic values
@@ -108,18 +136,12 @@ class EPADataLoader:
             n_features=len(feature_cols),
             feature_names=feature_cols,
             target_name=target_col,
-            task_type="regression"
+            task_type="regression",
         )
 
         print(f"Loaded {len(df):,} vehicles.")
 
-        return Dataset(
-            X=X,
-            y=y,
-            feature_names=feature_cols,
-            target_name=target_col,
-            info=info
-        )
+        return Dataset(X=X, y=y, feature_names=feature_cols, target_name=target_col, info=info)
 
 
 def load_epa_fuel_economy(
@@ -141,9 +163,4 @@ def load_epa_fuel_economy(
         Dataset with features and target.
     """
     loader = EPADataLoader()
-    return loader.load(
-        year_min=year_min,
-        year_max=year_max,
-        sample_size=sample_size,
-        random_state=random_state
-    )
+    return loader.load(year_min=year_min, year_max=year_max, sample_size=sample_size, random_state=random_state)

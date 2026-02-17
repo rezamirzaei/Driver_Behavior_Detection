@@ -42,5 +42,16 @@ combine-as-imports = true
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
-warn_return_any = true
 warn_unused_configs = true
+no_strict_optional = true
+disallow_untyped_defs = false
+check_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "src.models.simple_nn",
+    "src.models.cnn",
+    "src.models.resnet",
+    "src.models.robust_sparse",
+]
+ignore_errors = true

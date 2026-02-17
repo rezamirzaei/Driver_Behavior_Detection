@@ -65,10 +65,7 @@ class TestModelTrainer:
         X_train, y_train, X_test, y_test = classification_data
 
         model = LogisticRegression()
-        trained = train_model(
-            X_train, y_train, model, "LogReg",
-            X_val=X_test, y_val=y_test
-        )
+        trained = train_model(X_train, y_train, model, "LogReg", X_val=X_test, y_val=y_test)
 
         assert len(trained.history.val_scores) > 0
 

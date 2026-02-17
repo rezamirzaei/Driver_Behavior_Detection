@@ -1,6 +1,6 @@
 """Pydantic request/response models for the API."""
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from pydantic import BaseModel, field_validator
 
@@ -36,9 +36,7 @@ class FeatureRequest(BaseModel):
     @classmethod
     def validate_feature(cls, v: str) -> str:
         if v not in ALLOWED_FEATURES:
-            raise ValueError(
-                f"Invalid feature '{v}'. Allowed: {ALLOWED_FEATURES}"
-            )
+            raise ValueError(f"Invalid feature '{v}'. Allowed: {ALLOWED_FEATURES}")
         return v
 
 
@@ -52,9 +50,7 @@ class TwoFeatureRequest(BaseModel):
     @classmethod
     def validate_features(cls, v: str) -> str:
         if v not in ALLOWED_FEATURES:
-            raise ValueError(
-                f"Invalid feature '{v}'. Allowed: {ALLOWED_FEATURES}"
-            )
+            raise ValueError(f"Invalid feature '{v}'. Allowed: {ALLOWED_FEATURES}")
         return v
 
 
@@ -67,9 +63,7 @@ class ModelRequest(BaseModel):
     @classmethod
     def validate_model(cls, v: str) -> str:
         if v not in ALLOWED_MODELS:
-            raise ValueError(
-                f"Invalid model '{v}'. Allowed: {ALLOWED_MODELS}"
-            )
+            raise ValueError(f"Invalid model '{v}'. Allowed: {ALLOWED_MODELS}")
         return v
 
 
