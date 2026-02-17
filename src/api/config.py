@@ -1,0 +1,44 @@
+"""Runtime configuration for the API."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from typing import List
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+class AppSettings(BaseSettings):
+    """Environment-driven settings for API runtime."""
+
+    model_config = SettingsConfigDict(env_prefix="ABAX_", env_file=".env", env_file_encoding="utf-8")
+
+    app_name: str = "ABAX Model Analytics API"
+    app_version: str = "2.0.0"
+
+    random_state: int = 42
+    test_size: float = Field(default=0.2, gt=0.05, lt=0.5)
+    training_history_iterations: int = Field(default=12, ge=2, le=40)
+
+    classification_cache_csv: str = "data/processed/uah_raw_features.csv"
+    classification_raw_dir: str = "data/UAH-DRIVESET-v1"
+    regression_cache_csv: str = "data/processed/epa_fuel_economy.csv"
+
+    cors_origins: List[str] = Field(default_factory=lambda: ["*"])
+
+    def resolve_path(self, raw_path: str) -> Path:
+        """Resolve project-relative paths while preserving absolute paths."""
+        candidate = Path(raw_path)
+        if candidate.is_absolute():
+            return candidate
+        return (PROJECT_ROOT / candidate).resolve()
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> AppSettings:
+    """Return cached settings instance."""
+    return AppSettings()

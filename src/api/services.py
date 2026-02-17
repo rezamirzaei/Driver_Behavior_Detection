@@ -1,0 +1,637 @@
+"""Task-aware analytics services for API endpoints."""
+
+from __future__ import annotations
+
+import base64
+from dataclasses import dataclass
+import io
+import logging
+import os
+from typing import Any, Dict, List, Tuple
+import warnings
+
+# Avoid oversubscription/deadlocks from mixed OpenMP runtimes in containerized environments.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.model_selection import train_test_split
+
+from src.api.catalog import TaskCatalog, build_task_catalogs
+from src.api.config import AppSettings
+from src.api.model_registry import ModelRegistry
+from src.core.schemas import ClassificationMetrics, RegressionMetrics, SplitData, TrainingHistory
+from src.data.epa_loader import load_epa_fuel_economy
+from src.data.splitter import split_by_driver
+from src.features.analysis import analyze_correlations, compute_feature_statistics
+from src.features.preprocessing import engineer_regression_features, preprocess_features
+from src.models.evaluation import evaluate_classifier, evaluate_regressor
+from src.models.trainer import train_model
+from src.visualization.plots import (
+    plot_confusion_matrix,
+    plot_correlation_matrix,
+    plot_model_comparison_detailed,
+    plot_residual_analysis,
+    plot_training_error_history,
+)
+
+logger = logging.getLogger(__name__)
+warnings.filterwarnings("ignore", message=".*Intel OpenMP.*", category=RuntimeWarning)
+
+
+@dataclass
+class TaskRuntime:
+    """Runtime artifacts for one task."""
+
+    catalog: TaskCatalog
+    dataframe: pd.DataFrame
+    feature_columns: List[str]
+    numeric_feature_columns: List[str]
+    X_train: np.ndarray
+    X_test: np.ndarray
+    y_train: np.ndarray
+    y_test: np.ndarray
+    class_names: List[str]
+
+
+class AnalyticsService:
+    """Service exposing analytics operations for both tasks."""
+
+    def __init__(self, settings: AppSettings) -> None:
+        self.settings = settings
+
+        classification_csv = settings.resolve_path(settings.classification_cache_csv)
+        regression_csv = settings.resolve_path(settings.regression_cache_csv)
+
+        self.catalogs = build_task_catalogs(
+            classification_csv,
+            regression_csv,
+            random_state=settings.random_state,
+        )
+        self.model_registry = ModelRegistry(settings.random_state)
+
+        self.runtimes = {
+            "classification": self._load_classification_runtime(),
+            "regression": self._load_regression_runtime(),
+        }
+
+    def _load_classification_runtime(self) -> TaskRuntime:
+        catalog = self.catalogs["classification"]
+        cache_path = self.settings.resolve_path(self.settings.classification_cache_csv)
+
+        if cache_path.exists():
+            df = pd.read_csv(cache_path)
+        else:
+            from src.classification.data import load_or_build_dataset
+
+            raw_dir = self.settings.resolve_path(self.settings.classification_raw_dir)
+            df = load_or_build_dataset(data_dir=raw_dir, cache_path=cache_path)
+
+        if "behavior" not in df.columns or "driver" not in df.columns:
+            raise ValueError("Classification dataset must include 'behavior' and 'driver' columns")
+
+        feature_columns = [col for col in catalog.features if col in df.columns]
+        if not feature_columns:
+            feature_columns = [col for col in df.columns if col not in {"driver", "behavior", "road_type"}]
+
+        numeric_feature_columns = [col for col in feature_columns if pd.api.types.is_numeric_dtype(df[col])]
+
+        data = df.copy()
+        data["behavior"] = data["behavior"].astype(str).str.upper()
+        for col in numeric_feature_columns:
+            median_value = float(data[col].median())
+            data[col] = data[col].fillna(median_value)
+
+        X_for_split = data[feature_columns + ["driver"]].copy()
+        y = data["behavior"].copy()
+
+        X_train, X_test, y_train, y_test = split_by_driver(
+            X_for_split,
+            y,
+            test_drivers=["D6"],
+            test_size=self.settings.test_size,
+            random_state=self.settings.random_state,
+        )
+
+        split_data = SplitData(
+            X_train=X_train,
+            X_test=X_test,
+            y_train=y_train,
+            y_test=y_test,
+            feature_names=feature_columns,
+            target_name="behavior",
+        )
+        train_features, test_features = preprocess_features(split_data, scaler_type="robust")
+
+        class_names = sorted(data["behavior"].unique().tolist())
+
+        return TaskRuntime(
+            catalog=catalog,
+            dataframe=data,
+            feature_columns=feature_columns,
+            numeric_feature_columns=numeric_feature_columns,
+            X_train=np.asarray(train_features.X),
+            X_test=np.asarray(test_features.X),
+            y_train=np.asarray(y_train),
+            y_test=np.asarray(y_test),
+            class_names=class_names,
+        )
+
+    def _load_regression_runtime(self) -> TaskRuntime:
+        catalog = self.catalogs["regression"]
+        cache_path = self.settings.resolve_path(self.settings.regression_cache_csv)
+
+        if cache_path.exists():
+            df = pd.read_csv(cache_path)
+        else:
+            dataset = load_epa_fuel_economy(sample_size=5000, random_state=self.settings.random_state)
+            df = pd.DataFrame(dataset.X).copy()
+            df["comb08"] = dataset.y
+
+        if "comb08" not in df.columns:
+            raise ValueError("Regression dataset must include 'comb08' target column")
+
+        data = engineer_regression_features(df)
+        data = data.dropna(subset=["comb08"]).reset_index(drop=True)
+
+        feature_columns = [col for col in catalog.features if col in data.columns and col != "comb08"]
+        if not feature_columns:
+            feature_columns = [col for col in data.columns if col != "comb08"]
+
+        numeric_feature_columns = [col for col in feature_columns if pd.api.types.is_numeric_dtype(data[col])]
+
+        X = data[feature_columns].copy()
+        y = data["comb08"].astype(float).copy()
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=self.settings.test_size,
+            random_state=self.settings.random_state,
+        )
+
+        split_data = SplitData(
+            X_train=X_train,
+            X_test=X_test,
+            y_train=y_train,
+            y_test=y_test,
+            feature_names=feature_columns,
+            target_name="comb08",
+        )
+        train_features, test_features = preprocess_features(split_data, scaler_type="robust")
+
+        return TaskRuntime(
+            catalog=catalog,
+            dataframe=data,
+            feature_columns=feature_columns,
+            numeric_feature_columns=numeric_feature_columns,
+            X_train=np.asarray(train_features.X),
+            X_test=np.asarray(test_features.X),
+            y_train=np.asarray(y_train),
+            y_test=np.asarray(y_test),
+            class_names=[],
+        )
+
+    @staticmethod
+    def figure_to_data_url(fig: plt.Figure) -> str:
+        """Encode a matplotlib figure as data URL."""
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format="png", dpi=120, bbox_inches="tight")
+        buffer.seek(0)
+        encoded = base64.b64encode(buffer.read()).decode("utf-8")
+        plt.close(fig)
+        return f"data:image/png;base64,{encoded}"
+
+    def _runtime(self, task: str) -> TaskRuntime:
+        runtime = self.runtimes.get(task)
+        if runtime is None:
+            raise ValueError(f"Unsupported task: {task}")
+        return runtime
+
+    @staticmethod
+    def _feature_source_summary(task: str, source_type: str) -> str:
+        if task == "classification":
+            return "Processed feature aggregated from raw GPS/accelerometer driving signals."
+        if source_type == "raw":
+            return "Raw EPA attribute taken directly from the source dataset."
+        return "Processed feature engineered from one or more raw EPA vehicle attributes."
+
+    def list_feature_payload(self, task: str) -> List[Dict[str, Any]]:
+        runtime = self._runtime(task)
+        return [
+            {
+                "name": feature,
+                "description": runtime.catalog.feature_descriptions.get(feature, ""),
+                "is_numeric": feature in runtime.numeric_feature_columns,
+                "source_type": runtime.catalog.feature_sources.get(feature, "processed"),
+                "source_summary": self._feature_source_summary(
+                    task,
+                    runtime.catalog.feature_sources.get(feature, "processed"),
+                ),
+            }
+            for feature in runtime.feature_columns
+        ]
+
+    def list_model_payload(self, task: str) -> List[Dict[str, Any]]:
+        return self.model_registry.list_model_payload(task)
+
+    def list_models(self, task: str) -> List[str]:
+        return self.model_registry.list_models(task)
+
+    def metadata(self, task: str) -> Dict[str, Any]:
+        runtime = self._runtime(task)
+        return {
+            "task": task,
+            "dataset_name": runtime.catalog.dataset_name,
+            "target_name": runtime.catalog.target_name,
+            "n_rows": int(len(runtime.dataframe)),
+            "n_features": int(len(runtime.feature_columns)),
+            "n_numeric_features": int(len(runtime.numeric_feature_columns)),
+            "features": self.list_feature_payload(task),
+            "models": runtime.catalog.models,
+            "model_details": self.list_model_payload(task),
+        }
+
+    def analyze_feature(self, task: str, feature_name: str) -> Tuple[Dict[str, float], str, str, Dict[str, Any]]:
+        runtime = self._runtime(task)
+        series = runtime.dataframe[feature_name]
+        feature_desc = runtime.catalog.feature_descriptions.get(feature_name, "")
+        source_type = runtime.catalog.feature_sources.get(feature_name, "processed")
+
+        fig: plt.Figure
+        if pd.api.types.is_numeric_dtype(series):
+            numeric_series = pd.to_numeric(series, errors="coerce")
+            stats = compute_feature_statistics(numeric_series, feature_name)
+
+            fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+            axes[0].hist(numeric_series.dropna(), bins=30, edgecolor="white", color="#2563eb", alpha=0.8)
+            axes[0].set_title(f"Distribution: {feature_name}", fontweight="bold")
+            axes[0].set_xlabel(feature_name)
+            axes[0].set_ylabel("Frequency")
+
+            if task == "classification":
+                for label in sorted(runtime.dataframe["behavior"].unique()):
+                    subset = runtime.dataframe.loc[runtime.dataframe["behavior"] == label, feature_name]
+                    axes[1].hist(
+                        pd.to_numeric(subset, errors="coerce").dropna(),
+                        bins=20,
+                        alpha=0.5,
+                        label=str(label),
+                        edgecolor="white",
+                    )
+                axes[1].legend(title="Behavior")
+                axes[1].set_title("Class-wise distributions", fontweight="bold")
+                axes[1].set_xlabel(feature_name)
+                axes[1].set_ylabel("Frequency")
+            else:
+                axes[1].boxplot(numeric_series.dropna())
+                axes[1].set_title("Boxplot", fontweight="bold")
+                axes[1].set_ylabel(feature_name)
+
+            fig.tight_layout()
+
+            statistics = {
+                "mean": round(float(stats.mean), 4),
+                "median": round(float(stats.median), 4),
+                "std": round(float(stats.std), 4),
+                "min": round(float(stats.min), 4),
+                "max": round(float(stats.max), 4),
+                "skewness": round(float(stats.skewness), 4),
+                "missing_count": float(stats.n_missing),
+                "unique_count": float(stats.n_unique),
+            }
+            explanation = (
+                f"{feature_desc} Source type: {source_type}. Mean={stats.mean:.3f}, "
+                f"median={stats.median:.3f}, std={stats.std:.3f}. "
+                f"Skewness={stats.skewness:.3f}, missing={stats.n_missing}, unique={stats.n_unique}."
+            ).strip()
+        else:
+            value_counts = series.astype(str).fillna("N/A").value_counts().head(20)
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.bar(value_counts.index.astype(str), value_counts.values, color="#0ea5e9", edgecolor="black")
+            ax.set_title(f"Top categories: {feature_name}", fontweight="bold")
+            ax.set_ylabel("Count")
+            ax.tick_params(axis="x", rotation=45)
+            fig.tight_layout()
+
+            statistics = {
+                "missing_count": float(series.isna().sum()),
+                "unique_count": float(series.nunique(dropna=True)),
+                "top_category_count": float(value_counts.iloc[0] if len(value_counts) > 0 else 0),
+            }
+            top_label = str(value_counts.index[0]) if len(value_counts) > 0 else "N/A"
+            explanation = (
+                f"{feature_desc} Source type: {source_type}. Categorical distribution with "
+                f"{int(statistics['unique_count'])} unique values. Most frequent category is '{top_label}'."
+            ).strip()
+
+        feature_info = next(
+            (item for item in self.list_feature_payload(task) if item["name"] == feature_name),
+            {
+                "name": feature_name,
+                "description": feature_desc,
+                "is_numeric": feature_name in runtime.numeric_feature_columns,
+                "source_type": source_type,
+                "source_summary": self._feature_source_summary(task, source_type),
+            },
+        )
+
+        return statistics, explanation, self.figure_to_data_url(fig), feature_info
+
+    def analyze_two_features(self, task: str, feature1: str, feature2: str) -> Tuple[float, str, str]:
+        runtime = self._runtime(task)
+        df = runtime.dataframe
+
+        x = pd.to_numeric(df[feature1], errors="coerce")
+        y = pd.to_numeric(df[feature2], errors="coerce")
+        corr = float(x.corr(y)) if len(df) > 1 else 0.0
+        if np.isnan(corr):
+            corr = 0.0
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        if task == "classification":
+            for label in sorted(df["behavior"].unique()):
+                subset = df[df["behavior"] == label]
+                ax.scatter(
+                    pd.to_numeric(subset[feature1], errors="coerce"),
+                    pd.to_numeric(subset[feature2], errors="coerce"),
+                    alpha=0.75,
+                    label=str(label),
+                    edgecolors="white",
+                    linewidth=0.5,
+                )
+            ax.legend(title="Behavior")
+        else:
+            ax.scatter(x, y, alpha=0.6, edgecolors="white", linewidth=0.5, color="#16a34a")
+            valid = ~(x.isna() | y.isna())
+            if valid.sum() > 2:
+                coeff = np.polyfit(x[valid], y[valid], deg=1)
+                fit_x = np.linspace(float(x[valid].min()), float(x[valid].max()), 100)
+                fit_y = coeff[0] * fit_x + coeff[1]
+                ax.plot(fit_x, fit_y, color="#dc2626", linewidth=2)
+
+        ax.set_xlabel(feature1)
+        ax.set_ylabel(feature2)
+        ax.set_title(f"{feature1} vs {feature2} (r={corr:.3f})", fontweight="bold")
+        fig.tight_layout()
+
+        strength = "weak"
+        if abs(corr) >= 0.8:
+            strength = "strong"
+        elif abs(corr) >= 0.5:
+            strength = "moderate"
+        explanation = (
+            f"Pearson correlation between {feature1} and {feature2} is {corr:.4f}, indicating {strength} association."
+        )
+
+        return corr, explanation, self.figure_to_data_url(fig)
+
+    def correlation_matrix(self, task: str) -> Tuple[List[List[float]], List[Dict[str, Any]], str, str, List[str]]:
+        runtime = self._runtime(task)
+        numeric_cols = runtime.numeric_feature_columns
+        corr_df = runtime.dataframe[numeric_cols].corr().fillna(0.0)
+
+        analysis = analyze_correlations(runtime.dataframe, columns=numeric_cols, threshold=0.8)
+        high_pairs = [
+            {
+                "feature1": f1,
+                "feature2": f2,
+                "correlation": float(corr_value),
+            }
+            for f1, f2, corr_value in analysis.high_correlation_pairs
+        ]
+
+        figure = plot_correlation_matrix(runtime.dataframe, columns=numeric_cols)
+        explanation = (
+            f"Computed correlation matrix for {len(numeric_cols)} numeric features. "
+            f"Detected {len(high_pairs)} feature pairs with |r| > 0.8."
+        )
+        if analysis.multicollinearity_warning:
+            explanation += " Severe multicollinearity exists for at least one pair (|r| > 0.9)."
+
+        return (
+            corr_df.values.tolist(),
+            high_pairs,
+            explanation,
+            self.figure_to_data_url(figure),
+            numeric_cols,
+        )
+
+    def _build_model(self, task: str, model_name: str) -> Any:
+        return self.model_registry.create_model(task, model_name)
+
+    @staticmethod
+    def _score_to_error(metric_name: str, score: float | None) -> float | None:
+        if score is None:
+            return None
+
+        if metric_name in {"accuracy", "balanced_accuracy", "f1_score"}:
+            return max(0.0, 1.0 - score)
+        if metric_name in {"r2", "r2_score"}:
+            return 1.0 - score
+        return score
+
+    @staticmethod
+    def _error_metric_name(metric_name: str) -> str:
+        if metric_name in {"accuracy", "balanced_accuracy", "f1_score"}:
+            return "classification_error"
+        if metric_name in {"r2", "r2_score"}:
+            return "one_minus_r2"
+        return metric_name
+
+    def _history_payload(self, history: TrainingHistory) -> Dict[str, Any]:
+        points: List[Dict[str, Any]] = []
+
+        for idx, iteration in enumerate(history.iterations):
+            train_score = history.train_scores[idx] if idx < len(history.train_scores) else 0.0
+            val_score = history.val_scores[idx] if idx < len(history.val_scores) else None
+            points.append(
+                {
+                    "iteration": int(iteration),
+                    "train_score": float(train_score),
+                    "validation_score": float(val_score) if val_score is not None else None,
+                    "train_error": float(self._score_to_error(history.metric_name, train_score) or 0.0),
+                    "validation_error": (
+                        float(self._score_to_error(history.metric_name, val_score)) if val_score is not None else None
+                    ),
+                }
+            )
+
+        return {
+            "score_metric": history.metric_name,
+            "error_metric": self._error_metric_name(history.metric_name),
+            "points": points,
+        }
+
+    def _train_with_history(self, task: str, model_name: str) -> Tuple[Any, TrainingHistory]:
+        runtime = self._runtime(task)
+        model = self._build_model(task, model_name)
+
+        trained = train_model(
+            runtime.X_train,
+            runtime.y_train,
+            model,
+            model_name,
+            X_val=runtime.X_test,
+            y_val=runtime.y_test,
+            n_iterations=self.settings.training_history_iterations,
+        )
+        return trained.model, trained.history
+
+    def classification_confusion_matrix(
+        self,
+        model_name: str,
+    ) -> Tuple[ClassificationMetrics, str, Dict[str, Any], str]:
+        runtime = self._runtime("classification")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            model, history = self._train_with_history("classification", model_name)
+
+        metrics = evaluate_classifier(
+            model,
+            runtime.X_test,
+            runtime.y_test,
+            runtime.class_names,
+        )
+
+        confusion_fig = plot_confusion_matrix(metrics)
+        history_fig = plot_training_error_history(
+            history,
+            title=f"{model_name} - Train/Validation Error by Iteration",
+        )
+        return (
+            metrics,
+            self.figure_to_data_url(confusion_fig),
+            self._history_payload(history),
+            self.figure_to_data_url(history_fig),
+        )
+
+    def regression_diagnostics(
+        self,
+        model_name: str,
+    ) -> Tuple[RegressionMetrics, str, str, Dict[str, Any], str]:
+        runtime = self._runtime("regression")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            model, history = self._train_with_history("regression", model_name)
+
+        y_pred = model.predict(runtime.X_test)
+        metrics = evaluate_regressor(model, runtime.X_test, runtime.y_test)
+
+        diagnostics_fig = plot_residual_analysis(
+            runtime.y_test,
+            np.asarray(y_pred),
+            model_name=model_name,
+            r2=metrics.r2,
+        )
+        history_fig = plot_training_error_history(
+            history,
+            title=f"{model_name} - Train/Validation Error by Iteration",
+        )
+        explanation = (
+            f"{model_name} regression diagnostics: R2={metrics.r2:.4f}, RMSE={metrics.rmse:.4f}, MAE={metrics.mae:.4f}."
+        )
+        return (
+            metrics,
+            explanation,
+            self.figure_to_data_url(diagnostics_fig),
+            self._history_payload(history),
+            self.figure_to_data_url(history_fig),
+        )
+
+    def compare_models(self, task: str) -> Tuple[List[Dict[str, Any]], str, str, str]:
+        runtime = self._runtime(task)
+        models = self.list_models(task)
+        X_train_fit = runtime.X_train
+        y_train_fit = runtime.y_train
+
+        # Keep all classification samples; downsample larger regression training sets
+        # so the interactive dashboard remains responsive.
+        if task == "regression" and len(runtime.X_train) > 1500:
+            rng = np.random.default_rng(self.settings.random_state)
+            sample_idx = rng.choice(len(runtime.X_train), size=1500, replace=False)
+            X_train_fit = runtime.X_train[sample_idx]
+            y_train_fit = runtime.y_train[sample_idx]
+
+        rows: List[Dict[str, Any]] = []
+        for model_name in models:
+            model = self._build_model(task, model_name)
+
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=ConvergenceWarning)
+                    model.fit(X_train_fit, y_train_fit)
+
+                if task == "classification":
+                    cls_metrics = evaluate_classifier(model, runtime.X_test, runtime.y_test, runtime.class_names)
+                    rows.append(
+                        {
+                            "Model": model_name,
+                            "Accuracy": float(cls_metrics.accuracy),
+                            "Balanced Accuracy": float(cls_metrics.balanced_accuracy),
+                            "Precision": float(cls_metrics.precision),
+                            "Recall": float(cls_metrics.recall),
+                            "F1 Score": float(cls_metrics.f1_score),
+                        }
+                    )
+                else:
+                    reg_metrics = evaluate_regressor(model, runtime.X_test, runtime.y_test)
+                    rows.append(
+                        {
+                            "Model": model_name,
+                            "R2": float(reg_metrics.r2),
+                            "RMSE": float(reg_metrics.rmse),
+                            "MAE": float(reg_metrics.mae),
+                        }
+                    )
+            except Exception as exc:  # pragma: no cover - estimator-specific runtime failures
+                logger.warning("Skipping model '%s' for task '%s': %s", model_name, task, exc)
+                continue
+
+        if not rows:
+            raise ValueError(f"No models could be trained for task '{task}'.")
+
+        results_df = pd.DataFrame(rows)
+
+        if task == "classification":
+            results_df = results_df.sort_values("F1 Score", ascending=False)
+            metric_for_best = "F1 Score"
+            best_model = str(results_df.iloc[0]["Model"])
+            fig = plot_model_comparison_detailed(
+                results_df,
+                metrics=["Accuracy", "F1 Score", "Balanced Accuracy"],
+                higher_better=[True, True, True],
+                title="Classification Model Comparison",
+            )
+        else:
+            results_df = results_df.sort_values("R2", ascending=False)
+            metric_for_best = "R2"
+            best_model = str(results_df.iloc[0]["Model"])
+            fig = plot_model_comparison_detailed(
+                results_df,
+                metrics=["R2", "RMSE", "MAE"],
+                higher_better=[True, False, False],
+                title="Regression Model Comparison",
+            )
+
+        rounded_rows: List[Dict[str, Any]] = []
+        for _, row in results_df.iterrows():
+            item: Dict[str, Any] = {}
+            for key, value in row.items():
+                if isinstance(value, float):
+                    item[key] = round(value, 4)
+                else:
+                    item[key] = value
+            rounded_rows.append(item)
+
+        return rounded_rows, best_model, metric_for_best, self.figure_to_data_url(fig)
+
+
+def build_service(settings: AppSettings) -> AnalyticsService:
+    """Build and initialize the analytics service."""
+    logger.info("Initializing analytics service")
+    return AnalyticsService(settings)

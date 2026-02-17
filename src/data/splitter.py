@@ -150,8 +150,6 @@ def split_by_driver(
         y_train = y_train.values
         y_test = y_test.values
 
-    _train_drivers = sorted([d for d in unique_drivers if d not in test_drivers])
-
     print("\n📊 Driver-level split (D6 NEVER in training):")
     print(f"  Test drivers (held out): {sorted(test_drivers)} ({mandatory_test_count} samples)")
     print(f"  Additional stratified test samples: {len(X_test) - mandatory_test_count}")

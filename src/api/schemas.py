@@ -1,121 +1,270 @@
-"""Pydantic request/response models for the API."""
+"""Pydantic request/response contracts for the API."""
 
-from typing import Dict, List
+from __future__ import annotations
 
-from pydantic import BaseModel, field_validator
+from typing import Any, Dict, List, Literal, Optional
 
-ALLOWED_FEATURES = [
-    "score_total",
-    "score_accelerations",
-    "score_brakings",
-    "score_turnings",
-    "score_weaving",
-    "score_drifting",
-    "score_overspeeding",
-    "score_following",
-    "ratio_normal",
-    "ratio_drowsy",
-    "ratio_aggressive",
-]
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-ALLOWED_MODELS = [
-    "Random Forest",
-    "Gradient Boosting",
-    "Logistic (L2)",
-    "SVM (RBF)",
-    "KNN (k=5)",
-]
+from src.api.catalog import build_task_catalogs
+from src.api.config import get_settings
+
+TaskType = Literal["classification", "regression"]
+FeatureSourceType = Literal["raw", "processed"]
+
+
+_settings = get_settings()
+_catalogs = build_task_catalogs(
+    _settings.resolve_path(_settings.classification_cache_csv),
+    _settings.resolve_path(_settings.regression_cache_csv),
+    random_state=_settings.random_state,
+)
+
+ALLOWED_FEATURES_BY_TASK: Dict[str, List[str]] = {task: catalog.features for task, catalog in _catalogs.items()}
+ALLOWED_NUMERIC_FEATURES_BY_TASK: Dict[str, List[str]] = {
+    task: catalog.numeric_features for task, catalog in _catalogs.items()
+}
+ALLOWED_MODELS_BY_TASK: Dict[str, List[str]] = {task: catalog.models for task, catalog in _catalogs.items()}
+
+
+class TaskQuery(BaseModel):
+    """Query model for task-scoped GET endpoints."""
+
+    task: TaskType
 
 
 class FeatureRequest(BaseModel):
-    """Request model for single feature analysis."""
+    """Request for single-feature analysis."""
 
-    feature_name: str
+    task: TaskType
+    feature_name: str = Field(min_length=1)
 
     @field_validator("feature_name")
     @classmethod
-    def validate_feature(cls, v: str) -> str:
-        if v not in ALLOWED_FEATURES:
-            raise ValueError(f"Invalid feature '{v}'. Allowed: {ALLOWED_FEATURES}")
-        return v
+    def normalize_feature_name(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_feature(self) -> "FeatureRequest":
+        allowed = ALLOWED_FEATURES_BY_TASK[self.task]
+        if self.feature_name not in allowed:
+            raise ValueError(f"Feature '{self.feature_name}' is not valid for task '{self.task}'.")
+        return self
 
 
 class TwoFeatureRequest(BaseModel):
-    """Request model for two-feature comparison."""
+    """Request for two-feature analysis."""
 
-    feature1: str
-    feature2: str
+    task: TaskType
+    feature1: str = Field(min_length=1)
+    feature2: str = Field(min_length=1)
 
     @field_validator("feature1", "feature2")
     @classmethod
-    def validate_features(cls, v: str) -> str:
-        if v not in ALLOWED_FEATURES:
-            raise ValueError(f"Invalid feature '{v}'. Allowed: {ALLOWED_FEATURES}")
-        return v
+    def normalize_feature(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_features(self) -> "TwoFeatureRequest":
+        allowed = ALLOWED_FEATURES_BY_TASK[self.task]
+        numeric_allowed = ALLOWED_NUMERIC_FEATURES_BY_TASK[self.task]
+
+        if self.feature1 == self.feature2:
+            raise ValueError("feature1 and feature2 must be different.")
+        if self.feature1 not in allowed or self.feature2 not in allowed:
+            raise ValueError("Both features must be valid for the selected task.")
+        if self.feature1 not in numeric_allowed or self.feature2 not in numeric_allowed:
+            raise ValueError("Two-feature analysis requires numeric features.")
+
+        return self
 
 
 class ModelRequest(BaseModel):
-    """Request model for model evaluation."""
+    """Request for model-specific analysis."""
 
-    model_name: str
+    task: TaskType
+    model_name: str = Field(min_length=1)
 
     @field_validator("model_name")
     @classmethod
-    def validate_model(cls, v: str) -> str:
-        if v not in ALLOWED_MODELS:
-            raise ValueError(f"Invalid model '{v}'. Allowed: {ALLOWED_MODELS}")
-        return v
+    def normalize_model_name(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_model(self) -> "ModelRequest":
+        allowed = ALLOWED_MODELS_BY_TASK[self.task]
+        if self.model_name not in allowed:
+            raise ValueError(f"Model '{self.model_name}' is not valid for task '{self.task}'.")
+        return self
+
+
+class ConfusionMatrixRequest(ModelRequest):
+    """Request for classification confusion matrix."""
+
+    @model_validator(mode="after")
+    def validate_task(self) -> "ConfusionMatrixRequest":
+        if self.task != "classification":
+            raise ValueError("Confusion matrix is only available for classification task.")
+        return self
+
+
+class RegressionDiagnosticsRequest(ModelRequest):
+    """Request for regression diagnostics plot."""
+
+    @model_validator(mode="after")
+    def validate_task(self) -> "RegressionDiagnosticsRequest":
+        if self.task != "regression":
+            raise ValueError("Regression diagnostics is only available for regression task.")
+        return self
+
+
+class FeatureInfo(BaseModel):
+    """Feature metadata for UI controls."""
+
+    name: str
+    description: str
+    is_numeric: bool
+    source_type: FeatureSourceType = "processed"
+    source_summary: str = ""
+
+
+class ModelInfo(BaseModel):
+    """Model metadata for UI controls."""
+
+    name: str
+    task: TaskType
+    family: str
+    description: str
+    supports_staged_predictions: bool = False
+
+
+class FeatureListResponse(BaseModel):
+    """Response for list-features endpoint."""
+
+    task: TaskType
+    features: List[FeatureInfo]
+
+
+class ModelsResponse(BaseModel):
+    """Response for list-models endpoint."""
+
+    task: TaskType
+    models: List[str]
+    model_details: List[ModelInfo] = Field(default_factory=list)
+
+
+class TaskMetadataResponse(BaseModel):
+    """Response for task metadata endpoint."""
+
+    task: TaskType
+    dataset_name: str
+    target_name: str
+    n_rows: int
+    n_features: int
+    n_numeric_features: int
+    features: List[FeatureInfo]
+    models: List[str]
+    model_details: List[ModelInfo] = Field(default_factory=list)
 
 
 class FeatureResponse(BaseModel):
-    """Response model for single feature analysis."""
+    """Response for single-feature analysis."""
 
+    task: TaskType
     feature_name: str
     statistics: Dict[str, float]
     explanation: str
     plot_url: str
+    feature_info: Optional[FeatureInfo] = None
 
 
 class TwoFeatureResponse(BaseModel):
-    """Response model for two-feature comparison."""
+    """Response for two-feature analysis."""
+
+    task: TaskType
+    feature1: str
+    feature2: str
+    correlation: float
+    explanation: str
+    plot_url: str
+
+
+class CorrelationPair(BaseModel):
+    """One high-correlation pair."""
 
     feature1: str
     feature2: str
     correlation: float
-    plot_url: str
-    explanation: str
 
 
 class CorrelationMatrixResponse(BaseModel):
-    """Response model for correlation matrix."""
+    """Response for correlation matrix endpoint."""
 
+    task: TaskType
     matrix: List[List[float]]
     feature_names: List[str]
-    high_correlation_pairs: List[List[str]]
+    high_correlation_pairs: List[CorrelationPair]
     explanation: str
     plot_url: str
 
 
-class ConfusionMatrixResponse(BaseModel):
-    """Response model for confusion matrix."""
+class TrainingHistoryPoint(BaseModel):
+    """One train/validation point for model diagnostics over iterations."""
 
+    iteration: int
+    train_score: float
+    validation_score: Optional[float] = None
+    train_error: float
+    validation_error: Optional[float] = None
+
+
+class TrainingHistoryPayload(BaseModel):
+    """Training/validation trajectory used by diagnostics UI."""
+
+    score_metric: str = "score"
+    error_metric: str = "error"
+    points: List[TrainingHistoryPoint] = Field(default_factory=list)
+
+
+class ConfusionMatrixResponse(BaseModel):
+    """Response for classification confusion matrix endpoint."""
+
+    task: Literal["classification"]
     model_name: str
     accuracy: float
     metrics: Dict[str, float]
+    explanation: str
     plot_url: str
+    error_plot_url: str = ""
+    training_history: TrainingHistoryPayload = Field(default_factory=TrainingHistoryPayload)
+
+
+class RegressionDiagnosticsResponse(BaseModel):
+    """Response for regression diagnostics endpoint."""
+
+    task: Literal["regression"]
+    model_name: str
+    metrics: Dict[str, float]
+    explanation: str
+    plot_url: str
+    error_plot_url: str = ""
+    training_history: TrainingHistoryPayload = Field(default_factory=TrainingHistoryPayload)
 
 
 class ModelComparisonResponse(BaseModel):
-    """Response model for model comparison."""
+    """Response for all-model comparison endpoint."""
 
-    results: List[Dict[str, object]]
-    plot_url: str
+    task: TaskType
+    results: List[Dict[str, Any]]
     best_model: str
+    ranking_metric: str
+    explanation: str
+    plot_url: str
 
 
 class HealthResponse(BaseModel):
-    """Response model for health check."""
+    """Health response."""
 
-    status: str
+    status: Literal["ok"]
     version: str
-    dataset_loaded: bool
+    tasks_loaded: Dict[str, bool]

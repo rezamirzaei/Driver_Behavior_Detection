@@ -1,68 +1,54 @@
-name: CI
+name: CI-CD
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'pyproject.toml'
-      - 'Dockerfile'
-      - 'docker-compose.yml'
-      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'pyproject.toml'
-      - 'Dockerfile'
-      - 'docker-compose.yml'
-      - '.github/workflows/ci.yml'
 
 permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint
+  changes:
+    name: Detect Changes
     runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      docker: ${{ steps.filter.outputs.docker }}
+      workflow: ${{ steps.filter.outputs.workflow }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install linters
-        run: pip install ruff mypy
-      - name: Ruff check
-        run: ruff check src/ tests/ main.py
-      - name: Ruff format check
-        run: ruff format --check src/ tests/ main.py
 
-  type-check:
-    name: Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - id: filter
+        uses: dorny/paths-filter@v3
         with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: |
-          pip install mypy
-          pip install pydantic numpy pandas scikit-learn fastapi
-      - name: Mypy
-        run: mypy src/ --ignore-missing-imports --no-strict-optional
+          filters: |
+            backend:
+              - 'src/**'
+              - 'tests/**'
+              - 'main.py'
+              - 'pyproject.toml'
+            docker:
+              - 'Dockerfile'
+              - 'docker-compose.yml'
+              - '.dockerignore'
+            workflow:
+              - '.github/workflows/**'
 
-  test:
-    name: Test
+  quality:
+    name: Lint, Type, Test
     runs-on: ubuntu-latest
-    needs: [lint]
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.workflow == 'true'
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -72,7 +58,9 @@ jobs:
             "matplotlib>=3.7.0,<3.10.0" \
             "numpy>=1.24.0,<1.27.0" \
             "pandas>=2.0.0,<2.1.0" \
+            "plotly>=5.18.0" \
             "pydantic>=2.0.0,<3.0.0" \
+            "pydantic-settings>=2.2.0,<3.0.0" \
             "scikit-learn>=1.3.0,<1.6.0" \
             "scipy>=1.11.0,<1.14.0" \
             "seaborn>=0.12.0,<0.14.0" \
@@ -81,16 +69,27 @@ jobs:
             "fastapi>=0.109.1" \
             "uvicorn[standard]>=0.27.0" \
             "httpx>=0.25.0" \
+            "ruff>=0.4.0" \
+            "mypy>=1.8.0" \
             "pytest>=7.4.0"
-      - name: Run tests
+
+      - name: Ruff
+        run: |
+          ruff check src tests main.py
+          ruff format --check src tests main.py
+
+      - name: Mypy
+        run: mypy src
+
+      - name: Pytest
         run: pytest tests/ -v --tb=short
 
-  docker:
+  docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: [lint]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, quality]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.quality.result == 'success' || needs.quality.result == 'skipped') && (needs.changes.outputs.docker == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.workflow == 'true')
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker build -t driver-behavior-detection .
+        run: docker build -t abax-analytics:latest .

@@ -52,6 +52,7 @@ This project demonstrates end-to-end machine learning workflows for two telemati
 | Achievement | Description |
 |-------------|-------------|
 | **Raw Sensor Features** | Extracted 24 features from GPS/accelerometer, avoiding circular logic |
+| **Kalman Filtering** | 1D/2D Kalman filter for signal smoothing and noise reduction |
 | **Driver-Level Splitting** | D6 completely held out—tests generalization to new customers |
 | **18 Classification Models** | Including MCP, SCAD, MLP, SVM, Random Forest, KNN |
 | **Advanced Regularization** | Implemented MCP and SCAD for nearly unbiased sparse estimates |
@@ -118,11 +119,44 @@ jupyter lab notebooks/
 pytest tests/ -v
 ```
 
-### 4. Compile LaTeX Report
+### 4. Run API + AngularJS Dashboard
+
+```bash
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Open `http://localhost:8000` for the dashboard.
+
+### 5. Run with Docker (Standalone)
+
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:8000` for the API + UI.
+
+### 6. Compile LaTeX Report
 
 ```bash
 cd docs && bash compile_report.sh
 ```
+
+---
+
+## 🧩 API Endpoints
+
+Task-aware endpoints (`task=classification|regression`):
+
+- `GET /api/health` - service readiness for both tasks
+- `GET /api/metadata` - dataset/feature/model metadata for selected task
+- `GET /api/features` - feature list with numeric flags and descriptions
+- `GET /api/models` - selectable models for selected task
+- `POST /api/feature` - single-feature plot + statistics
+- `POST /api/two-features` - two-feature scatter + correlation
+- `GET /api/correlation-matrix` - full correlation matrix + high-correlation pairs
+- `POST /api/model/confusion-matrix` - classification confusion matrix
+- `POST /api/model/regression-diagnostics` - regression residual diagnostics
+- `GET /api/model/compare` - all-model benchmark for selected task
 
 ---
 
@@ -156,6 +190,15 @@ ABAX/
 │   │   ├── simple_nn.py              # MLP Neural Network
 │   │   ├── comparison.py             # Model comparison utilities
 │   │   └── evaluation.py             # Metrics and evaluation
+│   ├── features/                     # Feature engineering
+│   │   ├── kalman.py                 # 1D/2D Kalman filter implementation
+│   │   ├── preprocessing.py          # Data preprocessing
+│   │   └── analysis.py               # Feature analysis utilities
+│   ├── api/                          # FastAPI + AngularJS MVC dashboard
+│   │   ├── app.py                    # API routes
+│   │   ├── schemas.py                # Pydantic request/response contracts
+│   │   ├── services.py               # Task-aware analytics services
+│   │   └── static/                   # AngularJS module/service/controller + CSS
 │   ├── data/                         # Data loaders
 │   └── utils/                        # Utilities
 │
@@ -187,6 +230,25 @@ ABAX/
 | Event Counts | brake, turn, hard events | Discrete summaries |
 
 **Why Jerk Matters:** Jerk = d(acceleration)/dt. Aggressive drivers have high jerk variance because they brake suddenly, accelerate abruptly, and make sharp steering corrections.
+
+### Kalman Filter Signal Processing
+
+The project implements both 1D and 2D Kalman filters for optimal noise reduction:
+
+```
+1D Filter: Smooths individual sensor channels
+   - Process noise Q: 0.001 - 0.1 (model uncertainty)
+   - Measurement noise R: 0.1 - 1.0 (sensor uncertainty)
+
+2D Filter: Estimates position + velocity simultaneously
+   - Provides direct jerk estimation
+   - State vector: [position, velocity]
+```
+
+**Kalman-based features extracted:**
+- Noise reduction ratio
+- Smoothness improvement
+- Estimated velocity (jerk)
 
 ### Data Splitting Strategy
 
@@ -299,4 +361,3 @@ cd docs && bash compile_report.sh
 <p align="center">
   <strong>✅ Complete and ready for review!</strong>
 </p>
-

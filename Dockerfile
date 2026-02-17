@@ -1,19 +1,19 @@
 FROM python:3.11-slim
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency file first for layer caching
 COPY pyproject.toml ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir pip --upgrade && \
-    pip install --no-cache-dir ".[all]" 2>/dev/null || \
-    pip install --no-cache-dir \
+RUN pip install --upgrade pip \
+    && pip install \
         "category-encoders>=2.6.0,<2.7.0" \
         "imbalanced-learn>=0.11.0,<0.13.0" \
         "matplotlib>=3.7.0,<3.10.0" \
@@ -21,25 +21,26 @@ RUN pip install --no-cache-dir pip --upgrade && \
         "pandas>=2.0.0,<2.1.0" \
         "plotly>=5.18.0" \
         "pydantic>=2.0.0,<3.0.0" \
+        "pydantic-settings>=2.2.0,<3.0.0" \
         "scikit-learn>=1.3.0,<1.6.0" \
         "scipy>=1.11.0,<1.14.0" \
         "seaborn>=0.12.0,<0.14.0" \
         "torch>=2.0.0,<2.3.0" \
         "tqdm>=4.65.0" \
         "fastapi>=0.109.1" \
-        "uvicorn[standard]>=0.27.0" \
-        "ruff>=0.4.0" \
-        "mypy>=1.8.0"
+        "uvicorn[standard]>=0.27.0"
 
-# Copy application code
 COPY src/ src/
 COPY data/ data/
-COPY tests/ tests/
-COPY main.py ./
+COPY main.py README.md ./
 
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"
 
 CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

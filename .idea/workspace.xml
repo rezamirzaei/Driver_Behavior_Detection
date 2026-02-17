@@ -4,40 +4,41 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="af8179b2-3fad-407e-9954-05e19cb2bbad" name="Changes" comment="fix using wrong features">
+    <list default="true" id="af8179b2-3fad-407e-9954-05e19cb2bbad" name="Changes" comment="update">
+      <change beforePath="$PROJECT_DIR$/.github/workflows/ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/ci.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/fix_environment.sh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/logs/cnn_experiments/.gitkeep" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/02_classification.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/02_classification.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/restart_kernel.sh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/check_errors.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/check_files.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/convert_notebooks.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/create_notebooks.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/fix_notebook.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/generate_all_figures.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/generate_cnn_figure.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/generate_figure1.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/generate_nn_figure.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/regenerate_all_figures.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/regenerate_corrupted_figures.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/regenerate_figures.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/regenerate_regression_figures.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/regenerate_report_figures.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/test_cnn.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/test_cnn_pytorch.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/test_notebook_structure.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/test_notebooks.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/test_raw_classification.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/test_resnet.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/test_simple_nn.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/validate_notebooks.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/verify_figures.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/api/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/api/schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/schemas.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/api/static/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/static/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/splitter.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/splitter.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/features/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/features/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/models/trainer.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/models/trainer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/visualization/plots.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/visualization/plots.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_api_schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_api_schemas.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CopilotPersistence">
+    <persistenceIdMap>
+      <entry key="_/Users/rezami/PycharmProjects/ABAX" value="37CnIjlgUi9zESkI3ux9kVkTsmb" />
+    </persistenceIdMap>
+  </component>
+  <component name="CopilotUserSelectedModel">
+    <selectedModels>
+      <entry key="edit-panel" value="GPT-5 mini" />
+      <entry key="chat-panel" value="Claude Opus 4.5" />
+      <entry key="agent-panel" value="Claude Opus 4.5" />
+    </selectedModels>
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="477" />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -53,6 +54,10 @@
     &quot;url&quot;: &quot;https://github.com/rezamirzaei/ABAX.git&quot;,
     &quot;accountId&quot;: &quot;13b2e180-7a45-4eb2-8390-d35b8c2f0839&quot;
   }
+}</component>
+  <component name="KubernetesApiPersistence">{}</component>
+  <component name="KubernetesApiProvider">{
+  &quot;isMigrated&quot;: true
 }</component>
   <component name="McpProjectServerCommands">
     <commands />
@@ -123,8 +128,8 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-PY-253.29346.142" />
-        <option value="bundled-python-sdk-f2b7a9f6281b-6e1f45a539f7-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.29346.142" />
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-PY-253.30387.173" />
+        <option value="bundled-python-sdk-4762d8aabb82-6d6dccd035ac-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.30387.173" />
       </set>
     </attachedChunks>
   </component>
@@ -144,6 +149,11 @@
       <workItem from="1766810064676" duration="24181000" />
       <workItem from="1766895846673" duration="23288000" />
       <workItem from="1766972340175" duration="15992000" />
+      <workItem from="1770335304845" duration="1582000" />
+      <workItem from="1770404065957" duration="1261000" />
+      <workItem from="1771353980598" duration="1232000" />
+      <workItem from="1771357643237" duration="7241000" />
+      <workItem from="1771371031559" duration="1097000" />
     </task>
     <task id="LOCAL-00001" summary="first commit, classification for UAH data and regression for EDA data">
       <option name="closed" value="true" />
@@ -241,7 +251,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766993871353</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="update">
+      <option name="closed" value="true" />
+      <created>1770335685734</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1770335685734</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -259,7 +277,8 @@
     <MESSAGE value="notebooks with results" />
     <MESSAGE value="new explanation file" />
     <MESSAGE value="fix using wrong features" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix using wrong features" />
+    <MESSAGE value="update" />
+    <option name="LAST_COMMIT_MESSAGE" value="update" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

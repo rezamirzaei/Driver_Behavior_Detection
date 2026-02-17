@@ -4,6 +4,7 @@ Visualization module for plots.
 
 from typing import Dict, List, Optional, Tuple
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -571,6 +572,68 @@ def plot_training_history(
     return fig
 
 
+def _score_to_error_for_plot(metric_name: str, score: Optional[float]) -> Optional[float]:
+    """Convert tracked score values to error values for diagnostics plots."""
+    if score is None:
+        return None
+
+    if metric_name in {"accuracy", "balanced_accuracy", "f1_score"}:
+        return max(0.0, 1.0 - score)
+    if metric_name in {"r2", "r2_score"}:
+        return 1.0 - score
+    return score
+
+
+def plot_training_error_history(
+    history: TrainingHistory,
+    title: str = "Training and Validation Error",
+    figsize: Tuple[int, int] = (10, 6),
+) -> plt.Figure:
+    """Plot training/validation error by iteration for model diagnostics."""
+    fig, ax = plt.subplots(figsize=figsize)
+
+    train_errors = [_score_to_error_for_plot(history.metric_name, score) for score in history.train_scores]
+    val_errors = [_score_to_error_for_plot(history.metric_name, score) for score in history.val_scores]
+
+    ax.plot(
+        history.iterations,
+        train_errors,
+        "b-",
+        linewidth=2,
+        marker="o",
+        markersize=4,
+        label="Training Error",
+    )
+
+    if val_errors:
+        val_iterations = history.iterations[: len(val_errors)]
+        ax.plot(
+            val_iterations,
+            val_errors,
+            "r--",
+            linewidth=2,
+            marker="s",
+            markersize=4,
+            label="Validation Error",
+        )
+
+    if history.metric_name in {"accuracy", "balanced_accuracy", "f1_score"}:
+        y_label = "Error (1 - Score)"
+    elif history.metric_name in {"r2", "r2_score"}:
+        y_label = "Error (1 - R2)"
+    else:
+        y_label = history.metric_name.upper()
+
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel(y_label)
+    ax.set_title(title, fontweight="bold")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    return fig
+
+
 def plot_feature_importance(
     feature_names: List[str],
     importances: np.ndarray,
@@ -584,7 +647,7 @@ def plot_feature_importance(
     fig, ax = plt.subplots(figsize=figsize)
 
     y_pos = np.arange(len(indices))
-    colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(indices)))[::-1]  # type: ignore[attr-defined]
+    colors = mpl.colormaps["viridis"](np.linspace(0.2, 0.8, len(indices)))[::-1]
 
     ax.barh(y_pos, importances[indices], color=colors, edgecolor="black")
     ax.set_yticks(y_pos)
@@ -674,7 +737,7 @@ def plot_model_comparison(
 
     sorted_df = results_df.sort_values(metric_col, ascending=not higher_is_better)
 
-    colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(sorted_df)))  # type: ignore[attr-defined]
+    colors = mpl.colormaps["viridis"](np.linspace(0.2, 0.8, len(sorted_df)))
     if not higher_is_better:
         colors = colors[::-1]
 
@@ -1171,7 +1234,7 @@ def plot_model_comparison_detailed(
     fig, axes = plt.subplots(1, n_metrics, figsize=figsize)
     axes = [axes] if n_metrics == 1 else list(axes)
 
-    colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(comparison_df)))  # type: ignore[attr-defined]
+    colors = mpl.colormaps["viridis"](np.linspace(0.2, 0.8, len(comparison_df)))
 
     for idx, (metric, higher) in enumerate(zip(metrics, higher_better)):
         ax = axes[idx]

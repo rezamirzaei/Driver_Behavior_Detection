@@ -16,6 +16,16 @@ from src.features.analysis import (
     print_outlier_summary,
     print_score_mapping_explanation,
 )
+from src.features.kalman import (
+    KalmanFilter1D,
+    KalmanFilter2D,
+    apply_kalman_filter_1d,
+    apply_kalman_filter_2d,
+    compute_kalman_features,
+    extract_kalman_features_from_trip,
+    smooth_sensor_data,
+    tune_kalman_parameters,
+)
 from src.features.preprocessing import (
     FeaturePreprocessor,
     TargetEncoder,
@@ -48,4 +58,13 @@ __all__ = [
     "find_high_correlation_pairs",
     "get_feature_columns",
     "get_correlations_with_target",
+    # Kalman Filter
+    "KalmanFilter1D",
+    "KalmanFilter2D",
+    "apply_kalman_filter_1d",
+    "apply_kalman_filter_2d",
+    "smooth_sensor_data",
+    "compute_kalman_features",
+    "extract_kalman_features_from_trip",
+    "tune_kalman_parameters",
 ]

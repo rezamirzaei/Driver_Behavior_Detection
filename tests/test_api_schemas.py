@@ -1,4 +1,4 @@
-"""Tests for API schema validation and endpoint structure."""
+"""Tests for API schema validation."""
 
 from __future__ import annotations
 
@@ -6,112 +6,180 @@ from pydantic import ValidationError
 import pytest
 
 from src.api.schemas import (
-    ALLOWED_FEATURES,
-    ALLOWED_MODELS,
+    ALLOWED_FEATURES_BY_TASK,
+    ALLOWED_MODELS_BY_TASK,
+    ConfusionMatrixRequest,
     ConfusionMatrixResponse,
     CorrelationMatrixResponse,
+    FeatureInfo,
     FeatureRequest,
     FeatureResponse,
     HealthResponse,
     ModelComparisonResponse,
+    ModelInfo,
     ModelRequest,
+    RegressionDiagnosticsRequest,
+    RegressionDiagnosticsResponse,
+    TrainingHistoryPayload,
+    TrainingHistoryPoint,
     TwoFeatureRequest,
     TwoFeatureResponse,
 )
 
 
+def _first_feature(task: str) -> str:
+    return ALLOWED_FEATURES_BY_TASK[task][0]
+
+
+def _first_model(task: str) -> str:
+    return ALLOWED_MODELS_BY_TASK[task][0]
+
+
 class TestFeatureRequest:
-    def test_valid_feature(self):
-        req = FeatureRequest(feature_name="score_total")
-        assert req.feature_name == "score_total"
+    def test_valid_feature_request(self) -> None:
+        req = FeatureRequest(task="classification", feature_name=_first_feature("classification"))
+        assert req.task == "classification"
 
-    def test_invalid_feature(self):
+    def test_invalid_feature_request(self) -> None:
         with pytest.raises(ValidationError):
-            FeatureRequest(feature_name="invalid_feature")
-
-    def test_all_allowed_features(self):
-        for f in ALLOWED_FEATURES:
-            req = FeatureRequest(feature_name=f)
-            assert req.feature_name == f
+            FeatureRequest(task="classification", feature_name="not_a_real_feature")
 
 
 class TestTwoFeatureRequest:
-    def test_valid_two_features(self):
-        req = TwoFeatureRequest(feature1="score_total", feature2="score_brakings")
-        assert req.feature1 == "score_total"
-        assert req.feature2 == "score_brakings"
+    def test_valid_numeric_pair(self) -> None:
+        numeric_features = ALLOWED_FEATURES_BY_TASK["classification"][:2]
+        req = TwoFeatureRequest(task="classification", feature1=numeric_features[0], feature2=numeric_features[1])
+        assert req.feature1 != req.feature2
 
-    def test_invalid_feature1(self):
+    def test_same_feature_rejected(self) -> None:
+        same_feature = _first_feature("classification")
         with pytest.raises(ValidationError):
-            TwoFeatureRequest(feature1="invalid", feature2="score_total")
-
-    def test_invalid_feature2(self):
-        with pytest.raises(ValidationError):
-            TwoFeatureRequest(feature1="score_total", feature2="invalid")
+            TwoFeatureRequest(task="classification", feature1=same_feature, feature2=same_feature)
 
 
 class TestModelRequest:
-    def test_valid_model(self):
-        req = ModelRequest(model_name="Random Forest")
-        assert req.model_name == "Random Forest"
+    def test_classification_models_include_notebook_set(self) -> None:
+        models = ALLOWED_MODELS_BY_TASK["classification"]
+        assert len(models) >= 18
+        assert "Naive Bayes" in models
+        assert "Logistic (SCAD)" in models
+        assert "Gradient Boosting" in models
 
-    def test_invalid_model(self):
+    def test_valid_model_request(self) -> None:
+        req = ModelRequest(task="regression", model_name=_first_model("regression"))
+        assert req.model_name in ALLOWED_MODELS_BY_TASK["regression"]
+
+    def test_invalid_model_request(self) -> None:
         with pytest.raises(ValidationError):
-            ModelRequest(model_name="NonexistentModel")
+            ModelRequest(task="regression", model_name="invalid_model")
 
-    def test_all_allowed_models(self):
-        for m in ALLOWED_MODELS:
-            req = ModelRequest(model_name=m)
-            assert req.model_name == m
+
+class TestSpecializedModelRequests:
+    def test_confusion_matrix_request_requires_classification(self) -> None:
+        with pytest.raises(ValidationError):
+            ConfusionMatrixRequest(task="regression", model_name=_first_model("regression"))
+
+    def test_regression_request_requires_regression(self) -> None:
+        with pytest.raises(ValidationError):
+            RegressionDiagnosticsRequest(task="classification", model_name=_first_model("classification"))
 
 
 class TestResponseModels:
-    def test_feature_response(self):
-        resp = FeatureResponse(
-            feature_name="score_total",
-            statistics={"mean": 50.0, "std": 10.0},
-            explanation="Test",
+    def test_feature_response(self) -> None:
+        payload = FeatureResponse(
+            task="classification",
+            feature_name="speed_mean",
+            statistics={"mean": 1.0},
+            explanation="ok",
             plot_url="data:image/png;base64,abc",
         )
-        assert resp.feature_name == "score_total"
+        assert payload.task == "classification"
 
-    def test_two_feature_response(self):
-        resp = TwoFeatureResponse(
-            feature1="score_total",
-            feature2="score_brakings",
-            correlation=0.75,
+    def test_two_feature_response(self) -> None:
+        payload = TwoFeatureResponse(
+            task="classification",
+            feature1="speed_mean",
+            feature2="speed_std",
+            correlation=0.5,
+            explanation="ok",
             plot_url="data:image/png;base64,abc",
-            explanation="Test",
         )
-        assert resp.correlation == 0.75
+        assert payload.correlation == 0.5
 
-    def test_correlation_matrix_response(self):
-        resp = CorrelationMatrixResponse(
-            matrix=[[1.0, 0.5], [0.5, 1.0]],
-            feature_names=["a", "b"],
+    def test_correlation_matrix_response(self) -> None:
+        payload = CorrelationMatrixResponse(
+            task="regression",
+            matrix=[[1.0]],
+            feature_names=["f1"],
             high_correlation_pairs=[],
-            explanation="Test",
+            explanation="ok",
             plot_url="data:image/png;base64,abc",
         )
-        assert len(resp.matrix) == 2
+        assert payload.task == "regression"
 
-    def test_confusion_matrix_response(self):
-        resp = ConfusionMatrixResponse(
+    def test_confusion_matrix_response(self) -> None:
+        payload = ConfusionMatrixResponse(
+            task="classification",
             model_name="Random Forest",
             accuracy=0.95,
-            metrics={"f1_score": 0.94},
+            metrics={"f1_score": 0.9},
+            explanation="ok",
             plot_url="data:image/png;base64,abc",
         )
-        assert resp.accuracy == 0.95
+        assert payload.accuracy > 0.0
 
-    def test_model_comparison_response(self):
-        resp = ModelComparisonResponse(
-            results=[{"Model": "RF", "Accuracy": 0.95}],
+    def test_regression_diagnostics_response(self) -> None:
+        payload = RegressionDiagnosticsResponse(
+            task="regression",
+            model_name="Ridge",
+            metrics={"r2": 0.8, "rmse": 3.2, "mae": 2.1},
+            explanation="ok",
             plot_url="data:image/png;base64,abc",
-            best_model="RF",
         )
-        assert resp.best_model == "RF"
+        assert "r2" in payload.metrics
 
-    def test_health_response(self):
-        resp = HealthResponse(status="ok", version="1.0.0", dataset_loaded=True)
-        assert resp.dataset_loaded is True
+    def test_model_comparison_response(self) -> None:
+        payload = ModelComparisonResponse(
+            task="classification",
+            results=[{"Model": "Random Forest", "F1 Score": 0.9}],
+            best_model="Random Forest",
+            ranking_metric="F1 Score",
+            explanation="ok",
+            plot_url="data:image/png;base64,abc",
+        )
+        assert payload.best_model == "Random Forest"
+
+    def test_feature_info(self) -> None:
+        feature = FeatureInfo(name="speed_mean", description="Average speed", is_numeric=True)
+        assert feature.is_numeric is True
+        assert feature.source_type in {"raw", "processed"}
+
+    def test_model_info(self) -> None:
+        model = ModelInfo(
+            name="Random Forest",
+            task="classification",
+            family="Ensemble Tree",
+            description="Tree ensemble.",
+            supports_staged_predictions=False,
+        )
+        assert model.task == "classification"
+
+    def test_training_history_payload(self) -> None:
+        payload = TrainingHistoryPayload(
+            score_metric="accuracy",
+            error_metric="classification_error",
+            points=[
+                TrainingHistoryPoint(
+                    iteration=1,
+                    train_score=0.9,
+                    validation_score=0.8,
+                    train_error=0.1,
+                    validation_error=0.2,
+                )
+            ],
+        )
+        assert payload.points[0].iteration == 1
+
+    def test_health_response(self) -> None:
+        health = HealthResponse(status="ok", version="2.0.0", tasks_loaded={"classification": True, "regression": True})
+        assert health.tasks_loaded["classification"]
