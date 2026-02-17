@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="driverBehaviorApp">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Behavior Detection</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg); color: var(--text); line-height: 1.6;
+        }
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white; padding: 1.5rem 2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 1.5rem; font-weight: 700; }
+        .header p { font-size: 0.875rem; opacity: 0.9; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+        .nav-tabs {
+            display: flex; gap: 0.25rem; background: var(--card-bg);
+            border-radius: 0.75rem; padding: 0.25rem; margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1); flex-wrap: wrap;
+        }
+        .nav-tab {
+            padding: 0.625rem 1rem; border-radius: 0.5rem; cursor: pointer;
+            font-size: 0.875rem; font-weight: 500; border: none;
+            background: transparent; color: var(--text-secondary); transition: all 0.2s;
+        }
+        .nav-tab:hover { background: var(--bg); color: var(--text); }
+        .nav-tab.active { background: var(--primary); color: white; }
+        .card {
+            background: var(--card-bg); border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1.5rem; margin-bottom: 1.5rem;
+        }
+        .card h2 { font-size: 1.25rem; margin-bottom: 1rem; color: var(--text); }
+        .card h3 { font-size: 1rem; margin-bottom: 0.75rem; color: var(--text); }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; font-weight: 600; margin-bottom: 0.375rem; font-size: 0.875rem; }
+        select, button {
+            padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; border: 1px solid var(--border);
+        }
+        select { width: 100%; max-width: 350px; background: white; }
+        .btn {
+            background: var(--primary); color: white; border: none; cursor: pointer;
+            font-weight: 600; transition: background 0.2s;
+        }
+        .btn:hover { background: var(--primary-dark); }
+        .btn:disabled { background: var(--text-secondary); cursor: not-allowed; }
+        .plot-container { text-align: center; margin: 1rem 0; }
+        .plot-container img { max-width: 100%; height: auto; border-radius: 0.5rem; border: 1px solid var(--border); }
+        .explanation {
+            background: #f0f9ff; border-left: 4px solid var(--primary);
+            padding: 1rem; border-radius: 0 0.5rem 0.5rem 0; margin: 1rem 0;
+            font-size: 0.9rem; color: #0c4a6e;
+        }
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 0.75rem; margin: 1rem 0;
+        }
+        .stat-card {
+            background: var(--bg); border-radius: 0.5rem; padding: 0.75rem; text-align: center;
+        }
+        .stat-card .label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; }
+        .stat-card .value { font-size: 1.25rem; font-weight: 700; color: var(--primary); }
+        .loading { text-align: center; padding: 2rem; color: var(--text-secondary); }
+        .loading::after { content: '...'; animation: dots 1s steps(3, end) infinite; }
+        @keyframes dots { 0% { content: '.'; } 33% { content: '..'; } 66% { content: '...'; } }
+        .error { background: #fef2f2; border-left: 4px solid var(--danger); padding: 1rem; border-radius: 0 0.5rem 0.5rem 0; color: #991b1b; margin: 1rem 0; }
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.875rem; }
+        th, td { padding: 0.625rem; text-align: left; border-bottom: 1px solid var(--border); }
+        th { background: var(--bg); font-weight: 600; }
+        .badge {
+            display: inline-block; padding: 0.125rem 0.5rem; border-radius: 1rem;
+            font-size: 0.75rem; font-weight: 600;
+        }
+        .badge-success { background: #dcfce7; color: #166534; }
+        .badge-warning { background: #fef9c3; color: #854d0e; }
+        .row { display: flex; gap: 1rem; flex-wrap: wrap; }
+        .col { flex: 1; min-width: 280px; }
+        .feature-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0; }
+        .feature-chip {
+            padding: 0.25rem 0.75rem; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 1rem; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;
+        }
+        .feature-chip:hover, .feature-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
+    </style>
+</head>
+<body ng-controller="MainController">
+    <div class="header">
+        <h1>🚗 Driver Behavior Detection Dashboard</h1>
+        <p>UAH-DriveSet Analysis • Classification: Normal / Drowsy / Aggressive</p>
+    </div>
+
+    <div class="container">
+        <div class="nav-tabs">
+            <button class="nav-tab" ng-class="{active: activeTab === 'feature'}" ng-click="activeTab = 'feature'">📊 Single Feature</button>
+            <button class="nav-tab" ng-class="{active: activeTab === 'twofeature'}" ng-click="activeTab = 'twofeature'">📈 Two Features</button>
+            <button class="nav-tab" ng-class="{active: activeTab === 'correlation'}" ng-click="activeTab = 'correlation'">🔗 Correlation Matrix</button>
+            <button class="nav-tab" ng-class="{active: activeTab === 'confusion'}" ng-click="activeTab = 'confusion'">🎯 Confusion Matrix</button>
+            <button class="nav-tab" ng-class="{active: activeTab === 'compare'}" ng-click="activeTab = 'compare'">🏆 Model Comparison</button>
+        </div>
+
+        <!-- Single Feature Analysis -->
+        <div ng-show="activeTab === 'feature'">
+            <div class="card">
+                <h2>📊 Single Feature Analysis</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Select a feature to view its distribution across behavior classes with comprehensive statistics.</p>
+                <div class="form-group">
+                    <label>Select Feature</label>
+                    <div class="feature-list">
+                        <span class="feature-chip" ng-repeat="f in features"
+                              ng-class="{active: selectedFeature === f.name}"
+                              ng-click="selectedFeature = f.name">{{f.name}}</span>
+                    </div>
+                </div>
+                <button class="btn" ng-click="analyzeFeature()" ng-disabled="!selectedFeature || featureLoading">
+                    {{featureLoading ? 'Analyzing' : 'Analyze Feature'}}
+                </button>
+            </div>
+            <div class="loading" ng-show="featureLoading">Loading feature analysis</div>
+            <div class="error" ng-show="featureError">{{featureError}}</div>
+            <div ng-show="featureResult">
+                <div class="card">
+                    <h3>{{featureResult.feature_name}}</h3>
+                    <div class="explanation">{{featureResult.explanation}}</div>
+                    <div class="stats-grid">
+                        <div class="stat-card" ng-repeat="(key, val) in featureResult.statistics">
+                            <div class="label">{{key}}</div>
+                            <div class="value">{{val | number:4}}</div>
+                        </div>
+                    </div>
+                    <div class="plot-container">
+                        <img ng-src="{{featureResult.plot_url}}" alt="Feature distribution plot">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Two Feature Comparison -->
+        <div ng-show="activeTab === 'twofeature'">
+            <div class="card">
+                <h2>📈 Two Feature Comparison</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Select two features to see their scatter plot and correlation, color-coded by driving behavior class.</p>
+                <div class="row">
+                    <div class="col">
+                        <div class="form-group">
+                            <label>Feature 1</label>
+                            <select ng-model="feature1" ng-options="f.name as f.name for f in features"></select>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="form-group">
+                            <label>Feature 2</label>
+                            <select ng-model="feature2" ng-options="f.name as f.name for f in features"></select>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn" ng-click="compareTwoFeatures()" ng-disabled="!feature1 || !feature2 || twoFeatureLoading">
+                    {{twoFeatureLoading ? 'Comparing' : 'Compare Features'}}
+                </button>
+            </div>
+            <div class="loading" ng-show="twoFeatureLoading">Generating comparison</div>
+            <div class="error" ng-show="twoFeatureError">{{twoFeatureError}}</div>
+            <div ng-show="twoFeatureResult">
+                <div class="card">
+                    <h3>{{twoFeatureResult.feature1}} vs {{twoFeatureResult.feature2}}</h3>
+                    <div class="explanation">{{twoFeatureResult.explanation}}</div>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="label">Pearson Correlation</div>
+                            <div class="value">{{twoFeatureResult.correlation | number:4}}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">Strength</div>
+                            <div class="value" style="font-size: 0.9rem;">
+                                <span ng-if="Math.abs(twoFeatureResult.correlation) > 0.8" class="badge badge-warning">Strong</span>
+                                <span ng-if="Math.abs(twoFeatureResult.correlation) > 0.5 && Math.abs(twoFeatureResult.correlation) <= 0.8" class="badge badge-success">Moderate</span>
+                                <span ng-if="Math.abs(twoFeatureResult.correlation) <= 0.5" class="badge badge-success">Weak</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="plot-container">
+                        <img ng-src="{{twoFeatureResult.plot_url}}" alt="Two feature comparison scatter plot">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Correlation Matrix -->
+        <div ng-show="activeTab === 'correlation'">
+            <div class="card">
+                <h2>🔗 Correlation Matrix</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">View the full correlation matrix heatmap and identify highly correlated feature pairs.</p>
+                <button class="btn" ng-click="loadCorrelationMatrix()" ng-disabled="correlationLoading">
+                    {{correlationLoading ? 'Loading' : 'Load Correlation Matrix'}}
+                </button>
+            </div>
+            <div class="loading" ng-show="correlationLoading">Computing correlations</div>
+            <div class="error" ng-show="correlationError">{{correlationError}}</div>
+            <div ng-show="correlationResult">
+                <div class="card">
+                    <div class="explanation">{{correlationResult.explanation}}</div>
+                    <div class="plot-container">
+                        <img ng-src="{{correlationResult.plot_url}}" alt="Correlation matrix heatmap">
+                    </div>
+                </div>
+                <div class="card" ng-show="correlationResult.high_correlation_pairs.length > 0">
+                    <h3>⚠️ Highly Correlated Pairs (|r| &gt; 0.8)</h3>
+                    <table>
+                        <thead><tr><th>Feature 1</th><th>Feature 2</th><th>Correlation</th></tr></thead>
+                        <tbody>
+                            <tr ng-repeat="pair in correlationResult.high_correlation_pairs">
+                                <td>{{pair[0]}}</td><td>{{pair[1]}}</td><td>{{pair[2]}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="explanation">
+                        High correlation between features indicates potential multicollinearity. Consider removing one feature from each highly correlated pair to improve model interpretability and reduce variance in coefficient estimates. Features with |r| &gt; 0.9 pose the greatest risk of inflating standard errors.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confusion Matrix -->
+        <div ng-show="activeTab === 'confusion'">
+            <div class="card">
+                <h2>🎯 Model Confusion Matrix</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Select a model to train it and view its confusion matrix on the test set (Driver D6 held out).</p>
+                <div class="form-group">
+                    <label>Select Model</label>
+                    <select ng-model="selectedModel" ng-options="m as m for m in models"></select>
+                </div>
+                <button class="btn" ng-click="getConfusionMatrix()" ng-disabled="!selectedModel || confusionLoading">
+                    {{confusionLoading ? 'Training Model' : 'Train & Evaluate'}}
+                </button>
+            </div>
+            <div class="loading" ng-show="confusionLoading">Training model and generating confusion matrix</div>
+            <div class="error" ng-show="confusionError">{{confusionError}}</div>
+            <div ng-show="confusionResult">
+                <div class="card">
+                    <h3>{{confusionResult.model_name}}</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="label">Accuracy</div>
+                            <div class="value">{{confusionResult.accuracy | number:4}}</div>
+                        </div>
+                        <div class="stat-card" ng-repeat="(key, val) in confusionResult.metrics">
+                            <div class="label">{{key}}</div>
+                            <div class="value">{{val | number:4}}</div>
+                        </div>
+                    </div>
+                    <div class="plot-container">
+                        <img ng-src="{{confusionResult.plot_url}}" alt="Confusion matrix for selected model">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Comparison -->
+        <div ng-show="activeTab === 'compare'">
+            <div class="card">
+                <h2>🏆 Model Comparison</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Compare all available models side-by-side on the test set to identify the best performer.</p>
+                <button class="btn" ng-click="compareModels()" ng-disabled="compareLoading">
+                    {{compareLoading ? 'Comparing Models' : 'Compare All Models'}}
+                </button>
+            </div>
+            <div class="loading" ng-show="compareLoading">Training and comparing all models (this may take a moment)</div>
+            <div class="error" ng-show="compareError">{{compareError}}</div>
+            <div ng-show="compareResult">
+                <div class="card">
+                    <h3>Best Model: <span style="color: var(--success);">{{compareResult.best_model}}</span></h3>
+                    <div class="plot-container">
+                        <img ng-src="{{compareResult.plot_url}}" alt="Model comparison chart">
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Detailed Results</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th ng-repeat="key in compareResultKeys">{{key}}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr ng-repeat="row in compareResult.results" ng-class="{'background: #f0fdf4': row.Model === compareResult.best_model}">
+                                <td ng-repeat="key in compareResultKeys">
+                                    <span ng-if="isNumber(row[key])">{{row[key] | number:4}}</span>
+                                    <span ng-if="!isNumber(row[key])">{{row[key]}}</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var app = angular.module('driverBehaviorApp', []);
+
+        app.controller('MainController', ['$scope', '$http', function($scope, $http) {
+            $scope.Math = Math;
+            $scope.activeTab = 'feature';
+            $scope.features = [];
+            $scope.models = [];
+
+            // Single Feature
+            $scope.selectedFeature = null;
+            $scope.featureResult = null;
+            $scope.featureLoading = false;
+            $scope.featureError = null;
+
+            // Two Features
+            $scope.feature1 = null;
+            $scope.feature2 = null;
+            $scope.twoFeatureResult = null;
+            $scope.twoFeatureLoading = false;
+            $scope.twoFeatureError = null;
+
+            // Correlation
+            $scope.correlationResult = null;
+            $scope.correlationLoading = false;
+            $scope.correlationError = null;
+
+            // Confusion Matrix
+            $scope.selectedModel = null;
+            $scope.confusionResult = null;
+            $scope.confusionLoading = false;
+            $scope.confusionError = null;
+
+            // Model Comparison
+            $scope.compareResult = null;
+            $scope.compareResultKeys = [];
+            $scope.compareLoading = false;
+            $scope.compareError = null;
+
+            // Load features and models on init
+            $http.get('/api/features').then(function(res) {
+                $scope.features = res.data.features;
+            });
+            $http.get('/api/models').then(function(res) {
+                $scope.models = res.data.models;
+            });
+
+            $scope.isNumber = function(val) {
+                return typeof val === 'number';
+            };
+
+            $scope.analyzeFeature = function() {
+                $scope.featureLoading = true;
+                $scope.featureError = null;
+                $scope.featureResult = null;
+                $http.post('/api/feature', {feature_name: $scope.selectedFeature}).then(function(res) {
+                    $scope.featureResult = res.data;
+                    $scope.featureLoading = false;
+                }, function(err) {
+                    $scope.featureError = err.data.detail || 'Error analyzing feature';
+                    $scope.featureLoading = false;
+                });
+            };
+
+            $scope.compareTwoFeatures = function() {
+                $scope.twoFeatureLoading = true;
+                $scope.twoFeatureError = null;
+                $scope.twoFeatureResult = null;
+                $http.post('/api/two-features', {feature1: $scope.feature1, feature2: $scope.feature2}).then(function(res) {
+                    $scope.twoFeatureResult = res.data;
+                    $scope.twoFeatureLoading = false;
+                }, function(err) {
+                    $scope.twoFeatureError = err.data.detail || 'Error comparing features';
+                    $scope.twoFeatureLoading = false;
+                });
+            };
+
+            $scope.loadCorrelationMatrix = function() {
+                $scope.correlationLoading = true;
+                $scope.correlationError = null;
+                $scope.correlationResult = null;
+                $http.get('/api/correlation-matrix').then(function(res) {
+                    $scope.correlationResult = res.data;
+                    $scope.correlationLoading = false;
+                }, function(err) {
+                    $scope.correlationError = err.data.detail || 'Error loading correlation matrix';
+                    $scope.correlationLoading = false;
+                });
+            };
+
+            $scope.getConfusionMatrix = function() {
+                $scope.confusionLoading = true;
+                $scope.confusionError = null;
+                $scope.confusionResult = null;
+                $http.post('/api/model/confusion-matrix', {model_name: $scope.selectedModel}).then(function(res) {
+                    $scope.confusionResult = res.data;
+                    $scope.confusionLoading = false;
+                }, function(err) {
+                    $scope.confusionError = err.data.detail || 'Error computing confusion matrix';
+                    $scope.confusionLoading = false;
+                });
+            };
+
+            $scope.compareModels = function() {
+                $scope.compareLoading = true;
+                $scope.compareError = null;
+                $scope.compareResult = null;
+                $http.get('/api/model/compare').then(function(res) {
+                    $scope.compareResult = res.data;
+                    if (res.data.results && res.data.results.length > 0) {
+                        $scope.compareResultKeys = Object.keys(res.data.results[0]);
+                    }
+                    $scope.compareLoading = false;
+                }, function(err) {
+                    $scope.compareError = err.data.detail || 'Error comparing models';
+                    $scope.compareLoading = false;
+                });
+            };
+        }]);
+    </script>
+</body>
+</html>
