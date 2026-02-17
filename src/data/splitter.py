@@ -2,9 +2,10 @@
 Data splitting utilities with proper generalization strategies.
 """
 
-from typing import Tuple, Optional, List
-import pandas as pd
+from typing import List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from src.core.schemas import Dataset, SplitData
@@ -157,14 +158,14 @@ def split_by_driver(
         y_train = y_train.values
         y_test = y_test.values
 
-    train_drivers = sorted([d for d in unique_drivers if d not in test_drivers])
+    _train_drivers = sorted([d for d in unique_drivers if d not in test_drivers])
 
-    print(f"\n📊 Driver-level split (D6 NEVER in training):")
+    print("\n📊 Driver-level split (D6 NEVER in training):")
     print(f"  Test drivers (held out): {sorted(test_drivers)} ({mandatory_test_count} samples)")
     print(f"  Additional stratified test samples: {len(X_test) - mandatory_test_count}")
     print(f"  Train samples: {len(X_train)} ({100*len(X_train)/total_samples:.1f}%)")
     print(f"  Test samples: {len(X_test)} ({100*len(X_test)/total_samples:.1f}%)")
-    print(f"  ✅ D6 is NEVER used for training\n")
+    print("  ✅ D6 is NEVER used for training\n")
 
     return X_train, X_test, y_train, y_test
 

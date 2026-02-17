@@ -1,14 +1,15 @@
 """Tests for data loading modules."""
 
-import pytest
-import sys
 from pathlib import Path
+import sys
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.schemas import Dataset, DatasetInfo
-from src.data.uah_loader import UAHDataLoader, load_uah_driveset
 from src.data.splitter import split_data
+from src.data.uah_loader import UAHDataLoader, load_uah_driveset
 
 
 class TestUAHDataLoader:
@@ -58,8 +59,8 @@ class TestUAHDataLoader:
             pytest.skip("UAH data not available")
 
         dataset = load_uah_driveset(
-            data_dir, 
-            task='regression', 
+            data_dir,
+            task='regression',
             target_variable='score_total'
         )
 

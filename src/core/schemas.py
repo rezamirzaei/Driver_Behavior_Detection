@@ -2,11 +2,11 @@
 Core data structures using Pydantic for type-safe data handling.
 """
 
-from typing import List, Dict, Optional, Any, Literal, Tuple
 from enum import Enum
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DrivingBehavior(str, Enum):
@@ -183,7 +183,7 @@ class DataQualityReport(BaseModel):
     def summary(self) -> str:
         """Return formatted summary."""
         lines = [
-            f"📊 Data Quality Report",
+            "📊 Data Quality Report",
             f"   Samples: {self.n_samples:,}",
             f"   Features: {self.n_features} ({self.n_numerical} numerical, {self.n_categorical} categorical)",
         ]
@@ -218,9 +218,9 @@ The scores are computed by the DriveSafe iOS app from accelerometer data:
 
 2. **Event Detection** (from SEMANTIC_FINAL.txt):
    - Low/Medium/High Accelerations (Lacc, Macc, Hacc)
-   - Low/Medium/High Brakings (Lbra, Mbra, Hbra)  
+   - Low/Medium/High Brakings (Lbra, Mbra, Hbra)
    - Low/Medium/High Turnings (Ltur, Mtur, Htur)
-   
+
    Events are classified by acceleration magnitude thresholds:
    - Low: 0.2-0.5g
    - Medium: 0.5-0.8g

@@ -6,10 +6,10 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, RobustScaler, LabelEncoder, OneHotEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, RobustScaler, StandardScaler
 
-from src.core.schemas import SplitData, FeatureSet
+from src.core.schemas import FeatureSet, SplitData
 
 
 def engineer_regression_features(df: pd.DataFrame) -> pd.DataFrame:

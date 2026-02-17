@@ -31,13 +31,14 @@ def test_classification_pipeline():
 
     split = split_data(dataset, test_size=0.2, stratify=True)
 
-    from src.features import preprocess_features, encode_target
+    from src.features import encode_target, preprocess_features
 
     train_feat, test_feat = preprocess_features(split, scaler_type="robust")
     y_train, y_test, encoder = encode_target(split.y_train, split.y_test)
 
     from sklearn.ensemble import RandomForestClassifier
-    from src.models import train_model, evaluate_classifier
+
+    from src.models import evaluate_classifier, train_model
 
     rf = RandomForestClassifier(
         n_estimators=50, random_state=42, class_weight="balanced"

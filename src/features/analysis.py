@@ -4,17 +4,18 @@ Feature analysis module for exploratory data analysis.
 Provides reusable functions for EDA that return structured Pydantic outputs.
 """
 
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 from scipy import stats
 
 from src.core.schemas import (
-    OutlierAnalysisResult,
-    CorrelationAnalysisResult,
     ClassDistributionResult,
-    FeatureStatisticsResult,
+    CorrelationAnalysisResult,
     DataQualityReport,
+    FeatureStatisticsResult,
+    OutlierAnalysisResult,
     ScoreMappingInfo,
 )
 
@@ -219,7 +220,7 @@ def print_outlier_summary(results: List[OutlierAnalysisResult], method: str = "M
     """
     print(f"\n🔍 Outlier Analysis ({method} method):")
 
-    total_outliers = sum(r.n_outliers for r in results)
+    _total_outliers = sum(r.n_outliers for r in results)
     cols_with_outliers = sum(1 for r in results if r.n_outliers > 0)
 
     for result in results:

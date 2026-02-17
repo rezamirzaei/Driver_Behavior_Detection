@@ -2,13 +2,14 @@
 Reporting utilities for clean, consistent output formatting.
 """
 
-from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report
 
 if TYPE_CHECKING:
-    from src.core.schemas import DatasetInfo, ClassDistributionResult
+    from src.core.schemas import ClassDistributionResult, DatasetInfo
 
 
 def print_dataset_info(info: "DatasetInfo") -> None:
@@ -87,7 +88,7 @@ def print_split_summary(
     test_info: str = ""
 ) -> None:
     """Print train/test split summary."""
-    print(f"\n✅ Split complete")
+    print("\n✅ Split complete")
     print(f"   Train: {X_train_shape} {train_info}")
     print(f"   Test: {X_test_shape} {test_info}")
 
@@ -100,7 +101,7 @@ def print_training_analysis(
     """Print training convergence analysis."""
     overfitting_gap = final_val_loss - final_train_loss
 
-    print(f"\n📈 Training Analysis:")
+    print("\n📈 Training Analysis:")
     print(f"   Final train loss: {final_train_loss:.4f}")
     print(f"   Final val loss: {final_val_loss:.4f}")
     print(f"   Overfitting gap: {overfitting_gap:.4f}")
@@ -239,7 +240,7 @@ def print_outlier_analysis(
     """Print outlier analysis results."""
     pct = n_outliers / total * 100
 
-    print(f"\n🔍 Outlier Analysis (IQR method):")
+    print("\n🔍 Outlier Analysis (IQR method):")
     print(f"   Lower bound: {lower_bound:.2f}")
     print(f"   Upper bound: {upper_bound:.2f}")
     print(f"   Outliers: {n_outliers} ({pct:.1f}%)")
@@ -255,7 +256,7 @@ def print_residual_statistics(
     residuals: np.ndarray
 ) -> None:
     """Print residual analysis statistics."""
-    print(f"\n📊 Residual Statistics:")
+    print("\n📊 Residual Statistics:")
     print(f"   Mean: {np.mean(residuals):.4f} (should be ~0)")
     print(f"   Std: {np.std(residuals):.4f}")
     print(f"   Min: {np.min(residuals):.4f}")
@@ -282,7 +283,7 @@ def print_feature_types(
     categorical_cols: List[str]
 ) -> None:
     """Print summary of feature types."""
-    print(f"\n📊 Feature Types:")
+    print("\n📊 Feature Types:")
     print(f"   Numerical ({len(numerical_cols)}): {numerical_cols}")
     print(f"   Categorical ({len(categorical_cols)}): {categorical_cols}")
 
@@ -304,7 +305,7 @@ def print_categorical_cardinality(
         n_unique = df[col].nunique()
         print(f"   {col}: {n_unique} unique")
         if n_unique > high_cardinality_threshold:
-            print(f"      → HIGH cardinality! Use target encoding")
+            print("      → HIGH cardinality! Use target encoding")
         elif n_unique < 20:
             low_cardinality.append(col)
 
@@ -403,7 +404,7 @@ def print_feature_overview(
     rows: list = []
 
     for col in feature_cols:
-        dtype = str(df[col].dtype)
+        _dtype = str(df[col].dtype)
         n_unique = int(df[col].nunique())
         missing = int(df[col].isna().sum())
         missing_pct = missing / len(df) * 100

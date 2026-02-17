@@ -3,26 +3,27 @@ CNN model for sequence/tabular classification using PyTorch.
 Compatible with scikit-learn API for easy integration.
 """
 
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.preprocessing import LabelEncoder
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.preprocessing import LabelEncoder
 
 
 class CNN1DNetwork(nn.Module):
     """
     1D Convolutional Neural Network for classification.
-    
+
     Architecture:
     - Conv1D -> BatchNorm -> ReLU -> MaxPool
     - Conv1D -> BatchNorm -> ReLU -> MaxPool (optional)
     - Flatten -> Dense -> Dropout -> Dense (output)
     """
-    
+
     def __init__(
         self,
         input_size: int,
@@ -34,59 +35,59 @@ class CNN1DNetwork(nn.Module):
         use_batch_norm: bool = True,
     ):
         super(CNN1DNetwork, self).__init__()
-        
+
         self.use_batch_norm = use_batch_norm
         self.input_size = input_size
-        
+
         # Adjust kernel size if input is small
         actual_kernel_size = min(kernel_size, max(1, input_size // 2))
-        
+
         # First convolutional block
         self.conv1 = nn.Conv1d(in_channels=1, out_channels=n_filters, kernel_size=actual_kernel_size, padding=actual_kernel_size//2)
         self.bn1 = nn.BatchNorm1d(n_filters) if use_batch_norm else nn.Identity()
         self.relu1 = nn.ReLU()
-        
+
         # Adaptive pooling to handle variable sizes
         self.pool1 = nn.AdaptiveMaxPool1d(output_size=max(input_size // 2, 4))
-        
+
         # Second convolutional block
         pool1_size = max(input_size // 2, 4)
         actual_kernel_size2 = min(kernel_size, max(1, pool1_size // 2))
         self.conv2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=actual_kernel_size2, padding=actual_kernel_size2//2)
         self.bn2 = nn.BatchNorm1d(n_filters * 2) if use_batch_norm else nn.Identity()
         self.relu2 = nn.ReLU()
-        
+
         # Use adaptive pooling to ensure consistent output size
         self.pool2 = nn.AdaptiveMaxPool1d(output_size=4)
-        
+
         # Calculate flattened size: 4 * (n_filters * 2)
         self.flat_size = 4 * n_filters * 2
-        
+
         # Fully connected layers
         self.fc1 = nn.Linear(self.flat_size, hidden_size)
         self.relu3 = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
         self.fc2 = nn.Linear(hidden_size, n_classes)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x shape: (batch, 1, features)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu1(x)
         x = self.pool1(x)
-        
+
         x = self.conv2(x)
         x = self.bn2(x)
         x = self.relu2(x)
         x = self.pool2(x)
-        
+
         x = x.view(x.size(0), -1)  # Flatten
-        
+
         x = self.fc1(x)
         x = self.relu3(x)
         x = self.dropout(x)
         x = self.fc2(x)
-        
+
         return x
 
 
@@ -104,7 +105,7 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
         >>> clf.fit(X_train, y_train)
         >>> y_pred = clf.predict(X_test)
     """
-    
+
     def __init__(
         self,
         n_filters: int = 32,

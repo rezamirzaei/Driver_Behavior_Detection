@@ -1,19 +1,19 @@
 """Tests for models module."""
 
-import pytest
-import numpy as np
-import sys
 from pathlib import Path
+import sys
+
+import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor
-from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression
 
-from src.core.schemas import TrainedModel, TrainingHistory
-from src.models.trainer import ModelTrainer, train_model
-from src.models.evaluation import evaluate_classifier, evaluate_regressor
+from src.core.schemas import TrainedModel
 from src.models.comparison import get_classifiers, get_regressors
+from src.models.evaluation import evaluate_classifier, evaluate_regressor
+from src.models.trainer import train_model
 
 
 class TestModelTrainer:

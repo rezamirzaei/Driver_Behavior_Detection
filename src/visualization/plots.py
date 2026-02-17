@@ -2,19 +2,18 @@
 Visualization module for plots.
 """
 
-from typing import List, Optional, Tuple, Dict
+from typing import Dict, List, Optional, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 from src.core.schemas import (
-    TrainingHistory,
-    ClassificationMetrics,
     ClassDistributionResult,
-    CorrelationAnalysisResult,
+    ClassificationMetrics,
     OutlierAnalysisResult,
+    TrainingHistory,
 )
 
 
@@ -233,7 +232,7 @@ def plot_correlation_with_target(
 
     colors = ['#e74c3c' if v < 0 else '#2ecc71' for v in values]
 
-    bars = ax.barh(features, values, color=colors, edgecolor='black')
+    ax.barh(features, values, color=colors, edgecolor='black')
     ax.axvline(x=0, color='black', linewidth=0.5)
 
     ax.set_xlabel('Correlation Coefficient')
@@ -974,7 +973,7 @@ def plot_categorical_distributions(
 ) -> plt.Figure:
     """
     Plot bar charts showing top N values for each categorical column.
-    
+
     Args:
         df: DataFrame with categorical columns.
         columns: List of categorical column names.
@@ -982,23 +981,23 @@ def plot_categorical_distributions(
         n_cols: Number of columns in subplot grid.
         figsize: Figure size. None = auto-calculate.
         save_path: Optional path to save.
-        
+
     Returns:
         matplotlib Figure object.
     """
     if not columns:
         fig, ax = plt.subplots(figsize=(8, 4))
-        ax.text(0.5, 0.5, 'No categorical columns to plot', 
+        ax.text(0.5, 0.5, 'No categorical columns to plot',
                 ha='center', va='center', fontsize=12)
         ax.axis('off')
         return fig
-    
+
     n_features = len(columns)
     n_rows = (n_features + n_cols - 1) // n_cols
-    
+
     if figsize is None:
         figsize = (5 * n_cols, 4 * n_rows)
-    
+
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
 
     # Handle different axes array shapes
@@ -1023,16 +1022,16 @@ def plot_categorical_distributions(
         ax.set_title(f'{col} (Top {top_n})', fontweight='bold')
         ax.set_xlabel('')
         ax.tick_params(axis='x', rotation=45)
-    
+
     # Hide unused subplots
     for idx in range(n_features, len(axes)):
         axes[idx].set_visible(False)
-    
+
     plt.tight_layout()
-    
+
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    
+
     return fig
 
 
@@ -1048,7 +1047,7 @@ def plot_prediction_intervals(
 ) -> plt.Figure:
     """
     Plot prediction intervals from quantile regression.
-    
+
     Args:
         y_true: True values.
         y_pred: Point predictions (median).
@@ -1058,19 +1057,19 @@ def plot_prediction_intervals(
         title: Plot title.
         figsize: Figure size.
         save_path: Optional path to save.
-        
+
     Returns:
         matplotlib Figure object.
     """
     fig, axes = plt.subplots(1, 2, figsize=figsize)
-    
+
     # Sort by true value for cleaner visualization
     sort_idx = np.argsort(y_true)
     y_true_sorted = y_true[sort_idx]
     y_pred_sorted = y_pred[sort_idx]
     lower_sorted = lower[sort_idx]
     upper_sorted = upper[sort_idx]
-    
+
     # Left: Prediction intervals
     ax = axes[0]
     x = np.arange(len(y_true_sorted))
@@ -1081,29 +1080,29 @@ def plot_prediction_intervals(
     ax.set_ylabel('Value')
     ax.set_title('Prediction Intervals', fontweight='bold')
     ax.legend(loc='upper left')
-    
+
     if coverage is not None:
         ax.text(0.95, 0.05, f'Coverage: {coverage:.1%}',
                 transform=ax.transAxes, ha='right', va='bottom',
                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-    
+
     # Right: Interval width distribution
     ax = axes[1]
     widths = upper - lower
     ax.hist(widths, bins=30, edgecolor='black', alpha=0.7, color='steelblue')
-    ax.axvline(np.mean(widths), color='red', linestyle='--', linewidth=2, 
+    ax.axvline(np.mean(widths), color='red', linestyle='--', linewidth=2,
                label=f'Mean: {np.mean(widths):.2f}')
     ax.set_xlabel('Interval Width')
     ax.set_ylabel('Frequency')
     ax.set_title('Prediction Interval Width Distribution', fontweight='bold')
     ax.legend()
-    
+
     plt.suptitle(title, fontsize=14, fontweight='bold', y=1.02)
     plt.tight_layout()
-    
+
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    
+
     return fig
 
 
@@ -1118,7 +1117,7 @@ def plot_model_comparison_detailed(
 ) -> plt.Figure:
     """
     Plot detailed model comparison for multiple metrics.
-    
+
     Args:
         comparison_df: DataFrame with model results.
         metrics: List of metric column names.
@@ -1127,44 +1126,44 @@ def plot_model_comparison_detailed(
         higher_better: List of bools indicating if higher is better for each metric.
         figsize: Figure size.
         save_path: Optional path to save.
-        
+
     Returns:
         matplotlib Figure object.
     """
     n_metrics = len(metrics)
-    
+
     if figsize is None:
         figsize = (5 * n_metrics, 5)
-    
+
     if higher_better is None:
         higher_better = [True] * n_metrics
-    
+
     fig, axes = plt.subplots(1, n_metrics, figsize=figsize)
     axes = [axes] if n_metrics == 1 else list(axes)
-    
+
     colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(comparison_df)))
-    
+
     for idx, (metric, higher) in enumerate(zip(metrics, higher_better)):
         ax = axes[idx]
         sorted_df = comparison_df.sort_values(metric, ascending=not higher)
-        
+
         bars = ax.barh(sorted_df[model_col], sorted_df[metric], color=colors, edgecolor='black')
         ax.set_xlabel(metric)
-        
+
         direction = "→ Higher=Better" if higher else "→ Lower=Better"
         ax.set_title(f'{metric}\n{direction}', fontweight='bold')
-        
+
         # Add value labels
         for bar, val in zip(bars, sorted_df[metric]):
             ax.text(val, bar.get_y() + bar.get_height()/2,
                     f' {val:.3f}', va='center', fontsize=9)
-    
+
     plt.suptitle(title, fontsize=14, fontweight='bold', y=1.02)
     plt.tight_layout()
-    
+
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    
+
     return fig
 
 

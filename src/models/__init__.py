@@ -1,34 +1,34 @@
 """Models module exports."""
 
-from src.models.trainer import ModelTrainer, train_model
-from src.models.evaluation import (
-    ClassificationEvaluator,
-    RegressionEvaluator,
-    evaluate_classifier,
-    evaluate_regressor,
-    compute_regression_metrics,
-    train_and_evaluate_regressor,
-    train_and_evaluate_classifier,
-    QuantileRegressor,
-    compute_interval_coverage,
-    compute_interval_width,
-)
 from src.models.comparison import (
-    get_classifiers,
-    get_regressors,
-    get_knn_classifiers,
-    get_knn_regressors,
     compare_classifiers,
     compare_regressors,
+    get_classifiers,
+    get_knn_classifiers,
+    get_knn_regressors,
+    get_regressors,
+)
+from src.models.evaluation import (
+    ClassificationEvaluator,
+    QuantileRegressor,
+    RegressionEvaluator,
+    compute_interval_coverage,
+    compute_interval_width,
+    compute_regression_metrics,
+    evaluate_classifier,
+    evaluate_regressor,
+    train_and_evaluate_classifier,
+    train_and_evaluate_regressor,
 )
 from src.models.robust_sparse import (
     HuberL1Regressor,
-    SCADRegressor,
-    MCPRegressor,
-    HuberSCADRegressor,
     HuberMCPRegressor,
+    HuberSCADRegressor,
+    MCPRegressor,
+    SCADRegressor,
     get_sparse_robust_regressors,
 )
+from src.models.trainer import ModelTrainer, train_model
 
 # Optional: CNN models (requires PyTorch)
 try:

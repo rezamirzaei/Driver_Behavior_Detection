@@ -5,14 +5,15 @@ Clean, reusable plotting functions for classification results.
 All plots use consistent styling matching the LaTeX technical report.
 """
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from src.classification.types import ClassificationResult, DataSplit
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+
+from src.classification.types import ClassificationResult
 
 # Consistent color palette matching LaTeX report
 COLORS = {

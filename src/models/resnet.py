@@ -6,14 +6,15 @@ ResNet uses skip connections to enable training of deeper networks
 and helps prevent vanishing gradients.
 """
 
-from typing import Optional, Tuple, List, Dict
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.preprocessing import LabelEncoder
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.preprocessing import LabelEncoder
 
 
 class ResidualBlock1D(nn.Module):

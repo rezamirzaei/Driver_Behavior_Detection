@@ -5,55 +5,51 @@ This module provides a complete, clean API for driver behavior classification.
 All logic is encapsulated here - notebooks only call these functions.
 """
 
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import (
-    RandomForestClassifier,
-    GradientBoostingClassifier,
     AdaBoostClassifier,
-    ExtraTreesClassifier
+    ExtraTreesClassifier,
+    GradientBoostingClassifier,
+    RandomForestClassifier,
 )
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.neural_network import MLPClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
+from sklearn.model_selection import LeaveOneGroupOut, cross_val_score
 from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import (
-    accuracy_score,
-    f1_score,
-    classification_report,
-    confusion_matrix
-)
-from sklearn.model_selection import cross_val_score, LeaveOneGroupOut
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
 
-# Import types first (no dependencies)
-from src.classification.types import ClassificationResult, DataSplit
+from src.classification.data import (
+    TripInfo as TripInfo,
+    build_raw_dataset as build_raw_dataset,
+    compute_acceleration_magnitude as compute_acceleration_magnitude,
+    extract_raw_features as extract_raw_features,
+    get_all_trips as get_all_trips,
+    load_inertial_events as load_inertial_events,
+    load_or_build_dataset as load_or_build_dataset,
+    load_raw_accelerometer as load_raw_accelerometer,
+    load_raw_gps as load_raw_gps,
+)
 
 # Import submodules
 from src.classification.sparse_models import MCPLogisticRegression, SCADLogisticRegression
-from src.classification.data import (
-    TripInfo,
-    get_all_trips,
-    load_raw_gps,
-    load_raw_accelerometer,
-    load_inertial_events,
-    compute_acceleration_magnitude,
-    extract_raw_features,
-    build_raw_dataset,
-    load_or_build_dataset,
-)
+
+# Import types first (no dependencies)
+from src.classification.types import ClassificationResult, DataSplit
 from src.classification.visualization import (
-    plot_class_distribution,
-    plot_feature_distributions,
-    plot_driver_distribution,
-    plot_correlation_matrix,
-    plot_model_comparison,
-    plot_confusion_matrix,
-    plot_feature_importance,
+    plot_class_distribution as plot_class_distribution,
+    plot_confusion_matrix as plot_confusion_matrix,
+    plot_correlation_matrix as plot_correlation_matrix,
+    plot_driver_distribution as plot_driver_distribution,
+    plot_feature_distributions as plot_feature_distributions,
+    plot_feature_importance as plot_feature_importance,
+    plot_model_comparison as plot_model_comparison,
 )
 
 

@@ -7,27 +7,26 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, clone
-from sklearn.linear_model import (
-    LogisticRegression,
-    LinearRegression,
-    HuberRegressor,
-    RANSACRegressor,
-    Lasso,
-    Ridge,
-    ElasticNet,
-)
 from sklearn.ensemble import (
-    RandomForestClassifier,
-    RandomForestRegressor,
     GradientBoostingClassifier,
     GradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
 )
-from sklearn.svm import SVC, SVR, LinearSVC, LinearSVR
+from sklearn.linear_model import (
+    ElasticNet,
+    HuberRegressor,
+    Lasso,
+    LinearRegression,
+    LogisticRegression,
+    Ridge,
+)
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.svm import SVC, SVR, LinearSVC, LinearSVR
 
 from src.core.schemas import ModelComparison
-from src.models.trainer import train_model
 from src.models.evaluation import evaluate_classifier, evaluate_regressor
+from src.models.trainer import train_model
 
 
 def get_classifiers(

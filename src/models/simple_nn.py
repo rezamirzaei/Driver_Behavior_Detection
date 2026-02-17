@@ -3,14 +3,15 @@ Simple Neural Network Classifier for tabular data using PyTorch.
 Properly handles data normalization and is suitable for small datasets.
 """
 
-from typing import Optional, Tuple, List, Dict
+from typing import Dict, List, Optional
+
 import numpy as np
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 
 class SimpleNN(nn.Module):

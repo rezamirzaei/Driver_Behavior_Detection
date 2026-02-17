@@ -8,7 +8,7 @@ import numpy as np
 from sklearn.base import BaseEstimator
 from sklearn.metrics import accuracy_score, r2_score
 
-from src.core.schemas import TrainingHistory, TrainedModel
+from src.core.schemas import TrainedModel, TrainingHistory
 
 
 class ModelTrainer:

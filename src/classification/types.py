@@ -4,10 +4,11 @@ Classification Data Structures.
 Dataclasses used across the classification module.
 """
 
-import numpy as np
-from typing import List, Any
 from dataclasses import dataclass
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from typing import Any, List
+
+import numpy as np
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 
 @dataclass

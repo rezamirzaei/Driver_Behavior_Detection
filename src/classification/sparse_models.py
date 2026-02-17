@@ -5,11 +5,12 @@ Includes MCP (Minimax Concave Penalty) and SCAD penalized logistic regression.
 These provide better sparse solutions than L1 for feature selection.
 """
 
+from typing import Optional
+
 import numpy as np
 from scipy.optimize import minimize
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.preprocessing import LabelEncoder
-from typing import Optional
 
 
 class MCPLogisticRegression(BaseEstimator, ClassifierMixin):

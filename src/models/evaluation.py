@@ -2,8 +2,7 @@
 Model evaluation module.
 """
 
-from typing import List, Optional, Tuple, Dict
-
+from typing import Dict, List, Optional, Tuple
 import warnings
 
 import numpy as np
@@ -11,14 +10,14 @@ from sklearn.base import BaseEstimator
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    confusion_matrix,
     classification_report,
-    mean_squared_error,
+    confusion_matrix,
+    f1_score,
     mean_absolute_error,
+    mean_squared_error,
+    precision_score,
     r2_score,
+    recall_score,
 )
 
 from src.core.schemas import ClassificationMetrics, RegressionMetrics

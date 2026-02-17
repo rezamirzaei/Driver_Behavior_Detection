@@ -22,11 +22,10 @@ Why these features?
 """
 
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 import warnings
 
 import pandas as pd
-import numpy as np
 
 from src.core.schemas import Dataset, DatasetInfo
 
@@ -34,7 +33,7 @@ from src.core.schemas import Dataset, DatasetInfo
 class UAHDataLoader:
     """
     Loader for UAH-DriveSet data.
-    
+
     Extracts trip-level aggregate features for driver behavior classification.
     Uses cumulative statistics from SEMANTIC_ONLINE.txt (last row = trip summary).
     """
@@ -191,14 +190,14 @@ class UAHDataLoader:
              drop_cols.extend(['ratio_normal', 'ratio_drowsy', 'ratio_aggressive'])  # These are derived from scores
 
         # Select only numeric features
-        feature_cols = [c for c in df.columns 
-                       if c not in drop_cols 
+        feature_cols = [c for c in df.columns
+                       if c not in drop_cols
                        and c not in metadata_cols
                        and df[c].dtype in ['float64', 'int64']]
 
         X = df[feature_cols].copy()
         y = df[target_col].copy()
-        
+
         # Keep driver info if requested (for proper train/test splitting)
         if return_driver_info:
             X['driver'] = df['driver'].values
@@ -249,10 +248,10 @@ def load_uah_driveset(
     """
     loader = UAHDataLoader(data_dir)
     return loader.load(
-        drivers=drivers, 
-        behaviors=behaviors, 
-        road_types=road_types, 
-        task=task, 
+        drivers=drivers,
+        behaviors=behaviors,
+        road_types=road_types,
+        task=task,
         target_variable=target_variable,
         return_driver_info=return_driver_info
     )

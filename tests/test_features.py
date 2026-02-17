@@ -1,20 +1,20 @@
 """Tests for features module."""
 
-import pytest
+from pathlib import Path
+import sys
+
 import numpy as np
 import pandas as pd
-import sys
-from pathlib import Path
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.schemas import SplitData, FeatureSet
+from src.core.schemas import FeatureSet, SplitData
 from src.features.preprocessing import (
     FeaturePreprocessor,
-    preprocess_features,
-    TargetEncoder,
     encode_target,
     engineer_regression_features,
+    preprocess_features,
 )
 
 
