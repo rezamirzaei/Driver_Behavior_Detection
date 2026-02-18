@@ -73,12 +73,14 @@ def leave_one_driver_out_cv(
         accuracy = accuracy_score(y_test, y_pred)
         f1 = f1_score(y_test, y_pred, average="weighted")
 
-        per_fold_results.append({
-            "driver": driver,
-            "accuracy": accuracy,
-            "f1": f1,
-            "n_test": len(y_test),
-        })
+        per_fold_results.append(
+            {
+                "driver": driver,
+                "accuracy": accuracy,
+                "f1": f1,
+                "n_test": len(y_test),
+            }
+        )
 
     # Compute aggregate statistics
     accuracies = [fold["accuracy"] for fold in per_fold_results]

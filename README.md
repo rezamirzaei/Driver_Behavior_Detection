@@ -168,6 +168,9 @@ pytest tests/ -v
 ### 4. Run Quality Checks
 
 ```bash
+# One-time setup per clone: install git hooks
+pre-commit install
+
 ruff check .
 mypy src tests
 pytest -q
