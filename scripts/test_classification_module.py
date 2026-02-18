@@ -69,4 +69,3 @@ except Exception as e:
     log(f'❌ Error: {e}')
     import traceback
     log(traceback.format_exc())
-

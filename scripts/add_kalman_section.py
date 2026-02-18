@@ -373,4 +373,3 @@ def add_kalman_section_to_notebook():
 
 if __name__ == '__main__':
     add_kalman_section_to_notebook()
-

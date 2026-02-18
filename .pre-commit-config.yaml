@@ -3,11 +3,44 @@ repos:
     rev: v4.6.0
     hooks:
       - id: check-added-large-files
+        exclude: |
+          (?x)^(
+            \.idea/.*|
+            data/UAH-DRIVESET-v1/.*|
+            data/processed/.*|
+            results/model_artifacts/.*
+          )$
       - id: end-of-file-fixer
+        exclude: |
+          (?x)^(
+            \.idea/.*|
+            data/UAH-DRIVESET-v1/.*|
+            data/processed/.*|
+            results/model_artifacts/.*
+          )$
       - id: trailing-whitespace
+        exclude: |
+          (?x)^(
+            \.idea/.*|
+            data/UAH-DRIVESET-v1/.*|
+            data/processed/.*|
+            results/model_artifacts/.*
+          )$
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.5.0
     hooks:
       - id: ruff
         args: ["--fix"]
+        exclude: |
+          (?x)^(
+            data/UAH-DRIVESET-v1/.*|
+            data/processed/.*|
+            results/model_artifacts/.*
+          )$
       - id: ruff-format
+        exclude: |
+          (?x)^(
+            data/UAH-DRIVESET-v1/.*|
+            data/processed/.*|
+            results/model_artifacts/.*
+          )$

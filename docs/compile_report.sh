@@ -25,10 +25,10 @@ if command -v pdflatex &> /dev/null; then
     echo "Using pdflatex for compilation..."
     pdflatex -interaction=nonstopmode ABAX_Technical_Report.tex
     pdflatex -interaction=nonstopmode ABAX_Technical_Report.tex  # Run twice for TOC
-    
+
     # Clean up auxiliary files
     rm -f *.aux *.log *.out *.toc *.fdb_latexmk *.fls *.synctex.gz
-    
+
     echo ""
     echo "✅ PDF generated successfully: ABAX_Technical_Report.pdf"
     exit 0
@@ -39,7 +39,7 @@ if command -v latexmk &> /dev/null; then
     echo "Using latexmk for compilation..."
     latexmk -pdf -interaction=nonstopmode ABAX_Technical_Report.tex
     latexmk -c  # Clean auxiliary files
-    
+
     echo ""
     echo "✅ PDF generated successfully: ABAX_Technical_Report.pdf"
     exit 0

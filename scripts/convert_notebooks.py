@@ -48,4 +48,3 @@ if __name__ == '__main__':
 
     for ipynb_path, py_path in notebooks:
         convert_ipynb_to_pycharm(ipynb_path, py_path)
-

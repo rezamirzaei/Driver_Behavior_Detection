@@ -7,9 +7,9 @@
 
 ---
 
-**Author:** Reza Mirzaeifard  
-**Email:** [reza.mirzaeifard@gmail.com](mailto:reza.mirzaeifard@gmail.com)  
-**Date:** December 2025  
+**Author:** Reza Mirzaeifard
+**Email:** [reza.mirzaeifard@gmail.com](mailto:reza.mirzaeifard@gmail.com)
+**Date:** December 2025
 
 ---
 
@@ -493,7 +493,7 @@ cd docs && bash compile_report.sh
 
 ## 📧 Contact
 
-**Reza Mirzaeifard**  
+**Reza Mirzaeifard**
 📧 [reza.mirzaeifard@gmail.com](mailto:reza.mirzaeifard@gmail.com)
 
 ---

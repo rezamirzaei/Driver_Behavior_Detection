@@ -131,4 +131,3 @@ def generate_kalman_figures():
 
 if __name__ == '__main__':
     generate_kalman_figures()
-

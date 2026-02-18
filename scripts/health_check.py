@@ -127,4 +127,3 @@ def check_project():
 
 if __name__ == '__main__':
     sys.exit(check_project())
-

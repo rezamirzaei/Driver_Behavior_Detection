@@ -240,4 +240,3 @@ def update_notebook():
 
 if __name__ == '__main__':
     update_notebook()
-
