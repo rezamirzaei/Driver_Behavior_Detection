@@ -90,3 +90,42 @@ def test_artifact_roundtrip(tmp_path: Path) -> None:
     assert detail is not None
     assert detail["feature_names"] == ["speed_mean", "speed_std"]
     assert detail["result_payload"]["validation_metrics"]["accuracy"] == 0.8
+
+
+def test_drift_alert_roundtrip(tmp_path: Path) -> None:
+    repo = TrainingRunRepository(f"sqlite:///{tmp_path / 'runs.sqlite'}")
+    payload = {
+        "task": "classification",
+        "artifact_id": "artifact-1",
+        "overall_drift_score": 2.3,
+        "flagged_feature_count": 2,
+        "is_drifted": True,
+    }
+    alert_id = repo.create_drift_alert(
+        task="classification",
+        artifact_id="artifact-1",
+        overall_drift_score=2.3,
+        flagged_feature_count=2,
+        payload=payload,
+    )
+
+    latest = repo.get_latest_drift_alert(task="classification", artifact_id="artifact-1")
+    assert latest is not None
+    assert latest["alert_id"] == alert_id
+    assert latest["status"] == "open"
+
+    listed = repo.list_drift_alerts(task="classification", artifact_id="artifact-1", limit=5, status="open")
+    assert listed
+    assert listed[0]["alert_id"] == alert_id
+
+    acknowledged = repo.acknowledge_drift_alert(alert_id=alert_id, acknowledged_by="tester")
+    assert acknowledged is True
+
+    listed_ack = repo.list_drift_alerts(
+        task="classification",
+        artifact_id="artifact-1",
+        limit=5,
+        status="acknowledged",
+    )
+    assert listed_ack
+    assert listed_ack[0]["status"] == "acknowledged"

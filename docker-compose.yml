@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        INSTALL_TORCH: "${ABAX_INSTALL_TORCH:-false}"
     container_name: abax-analytics
     ports:
       - "8000:8000"
@@ -35,6 +37,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        INSTALL_TORCH: "${ABAX_INSTALL_TORCH:-false}"
     container_name: abax-worker
     command: ["celery", "-A", "src.api.celery_tasks:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
     environment:

@@ -462,7 +462,41 @@ class ArtifactDriftResponse(BaseModel):
     overall_drift_score: float
     flagged_feature_count: int
     is_drifted: bool
+    alert_id: Optional[str] = None
     feature_reports: List[ArtifactDriftFeatureReport] = Field(default_factory=list)
+
+
+class DriftAlertInfo(BaseModel):
+    """Summary payload for one drift alert."""
+
+    alert_id: str
+    task: TaskType
+    artifact_id: str
+    overall_drift_score: float
+    flagged_feature_count: int
+    status: Literal["open", "acknowledged"]
+    detected_at: str
+    acknowledged_at: Optional[str] = None
+    acknowledged_by: Optional[str] = None
+
+
+class DriftAlertListResponse(BaseModel):
+    """Response payload for drift alert listing."""
+
+    alerts: List[DriftAlertInfo] = Field(default_factory=list)
+
+
+class DriftAlertAcknowledgeRequest(BaseModel):
+    """Acknowledge drift alert request body."""
+
+    acknowledged_by: str = Field(default="api-user", min_length=1, max_length=128)
+
+
+class DriftAlertAcknowledgeResponse(BaseModel):
+    """Drift alert acknowledge response."""
+
+    alert_id: str
+    status: Literal["acknowledged", "not_found"]
 
 
 class ModelComparisonResponse(BaseModel):

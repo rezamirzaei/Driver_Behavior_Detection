@@ -1,8 +1,11 @@
 FROM python:3.11-slim
 
+ARG INSTALL_TORCH=false
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
@@ -14,6 +17,7 @@ COPY pyproject.toml ./
 
 RUN pip install --upgrade pip \
     && pip install \
+        "alembic>=1.13.0,<2.0.0" \
         "category-encoders>=2.6.0,<2.7.0" \
         "imbalanced-learn>=0.11.0,<0.13.0" \
         "matplotlib>=3.7.0,<3.10.0" \
@@ -28,15 +32,21 @@ RUN pip install --upgrade pip \
         "scikit-learn>=1.3.0,<1.6.0" \
         "scipy>=1.11.0,<1.14.0" \
         "seaborn>=0.12.0,<0.14.0" \
-        "torch>=2.0.0,<2.3.0" \
         "tqdm>=4.65.0" \
         "celery>=5.4.0,<5.5.0" \
         "redis>=5.0.0,<6.0.0" \
+        "requests>=2.31.0" \
         "fastapi>=0.109.1" \
         "uvicorn[standard]>=0.27.0"
 
+RUN if [ "$INSTALL_TORCH" = "true" ]; then \
+      pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.0.0,<2.3.0"; \
+    fi
+
+COPY alembic/ alembic/
+COPY alembic.ini ./
+COPY scripts/migrate_database.py scripts/migrate_database.py
 COPY src/ src/
-COPY data/ data/
 COPY main.py README.md ./
 
 RUN useradd --create-home --shell /bin/bash appuser \

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import json
 from pathlib import Path
 from typing import List, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -42,8 +43,40 @@ class AppSettings(BaseSettings):
     celery_retry_backoff_max: int = Field(default=60, ge=1, le=600)
     celery_soft_time_limit_seconds: int = Field(default=240, ge=30, le=3600)
     celery_time_limit_seconds: int = Field(default=300, ge=60, le=7200)
+    api_auth_enabled: bool = False
+    api_keys: List[str] = Field(default_factory=list)
+    api_key_header: str = "X-API-Key"
+    api_quota_per_minute: int = Field(default=120, ge=1, le=10000)
+    api_auth_exempt_paths: List[str] = Field(default_factory=lambda: ["/api/health"])
+    drift_alerts_enabled: bool = True
+    drift_alert_score_threshold: float = Field(default=1.0, ge=0.0, le=20.0)
+    drift_alert_flagged_feature_threshold: int = Field(default=1, ge=1, le=500)
+    drift_alert_cooldown_seconds: int = Field(default=300, ge=0, le=86400)
+    drift_alert_webhook_url: str = ""
+    drift_alert_webhook_timeout_seconds: float = Field(default=4.0, gt=0.1, le=30.0)
 
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
+
+    @field_validator("api_keys", "api_auth_exempt_paths", mode="before")
+    @classmethod
+    def _parse_list_field(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return []
+            if raw.startswith("["):
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except json.JSONDecodeError:
+                    pass
+            return [item.strip() for item in raw.split(",") if item.strip()]
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
 
     def resolve_path(self, raw_path: str) -> Path:
         """Resolve project-relative paths while preserving absolute paths."""

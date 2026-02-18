@@ -27,6 +27,7 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import requests
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score, train_test_split
 
@@ -598,6 +599,120 @@ class AnalyticsService:
             raise ValueError(f"Artifact '{artifact_id}' not found for task '{task}'.")
         return record
 
+    def list_drift_alerts(
+        self,
+        *,
+        task: Optional[TaskType],
+        artifact_id: Optional[str],
+        limit: int = 50,
+        status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List persisted drift alerts for operations and UI."""
+        safe_limit = max(1, min(int(limit), 500))
+        safe_status = status if status in {"open", "acknowledged"} else None
+        return self.run_repository.list_drift_alerts(
+            task=task,
+            artifact_id=artifact_id,
+            limit=safe_limit,
+            status=safe_status,
+        )
+
+    def acknowledge_drift_alert(self, *, alert_id: str, acknowledged_by: str) -> bool:
+        """Acknowledge one drift alert."""
+        user = (acknowledged_by or "").strip() or "api-user"
+        return self.run_repository.acknowledge_drift_alert(alert_id=alert_id, acknowledged_by=user)
+
+    def _dispatch_drift_webhook(
+        self,
+        *,
+        alert_id: str,
+        task: TaskType,
+        artifact_id: str,
+        drift_payload: Dict[str, Any],
+    ) -> None:
+        webhook_url = self.settings.drift_alert_webhook_url.strip()
+        if not webhook_url:
+            return
+
+        body = {
+            "alert_id": alert_id,
+            "task": task,
+            "artifact_id": artifact_id,
+            "detected_at": _utc_now_iso(),
+            "payload": drift_payload,
+        }
+        try:
+            requests.post(
+                webhook_url,
+                json=body,
+                timeout=float(self.settings.drift_alert_webhook_timeout_seconds),
+            )
+        except Exception:  # pragma: no cover - best-effort alerting
+            logger.exception(
+                "drift_alert_webhook_failed alert_id=%s task=%s artifact_id=%s", alert_id, task, artifact_id
+            )
+
+    def _maybe_emit_drift_alert(
+        self,
+        *,
+        task: TaskType,
+        artifact_id: str,
+        drift_payload: Dict[str, Any],
+    ) -> Optional[str]:
+        """Persist/dispatch drift alert when thresholds are exceeded."""
+        if not self.settings.drift_alerts_enabled:
+            return None
+
+        overall = float(drift_payload.get("overall_drift_score", 0.0))
+        flagged = int(drift_payload.get("flagged_feature_count", 0))
+        is_drifted = bool(drift_payload.get("is_drifted", False))
+        if not is_drifted and overall < self.settings.drift_alert_score_threshold:
+            return None
+        if (
+            flagged < self.settings.drift_alert_flagged_feature_threshold
+            and overall < self.settings.drift_alert_score_threshold
+        ):
+            return None
+
+        cooldown_seconds = int(self.settings.drift_alert_cooldown_seconds)
+        if cooldown_seconds > 0:
+            latest = self.run_repository.get_latest_drift_alert(task=task, artifact_id=artifact_id)
+            if latest is not None:
+                last_detected_raw = latest.get("detected_at")
+                if isinstance(last_detected_raw, str):
+                    try:
+                        last_detected = datetime.fromisoformat(last_detected_raw)
+                        if last_detected.tzinfo is None:
+                            last_detected = last_detected.replace(tzinfo=timezone.utc)
+                        age_seconds = (datetime.now(tz=timezone.utc) - last_detected).total_seconds()
+                        if age_seconds < cooldown_seconds:
+                            return None
+                    except ValueError:
+                        pass
+
+        alert_id = self.run_repository.create_drift_alert(
+            task=task,
+            artifact_id=artifact_id,
+            overall_drift_score=overall,
+            flagged_feature_count=flagged,
+            payload=drift_payload,
+        )
+        self._dispatch_drift_webhook(
+            alert_id=alert_id,
+            task=task,
+            artifact_id=artifact_id,
+            drift_payload=drift_payload,
+        )
+        logger.warning(
+            "drift_alert_created alert_id=%s task=%s artifact_id=%s overall_score=%.6f flagged_features=%d",
+            alert_id,
+            task,
+            artifact_id,
+            overall,
+            flagged,
+        )
+        return alert_id
+
     @staticmethod
     def _prepare_artifact_records(
         bundle: Dict[str, Any],
@@ -732,15 +847,19 @@ class AnalyticsService:
         overall_score = float(np.mean(drift_scores)) if drift_scores else 0.0
         flagged_count = sum(1 for item in feature_reports if bool(item.get("flagged")))
 
-        return {
+        payload = {
             "task": task,
             "artifact_id": artifact_id,
             "n_records": int(len(frame)),
             "overall_drift_score": round(overall_score, 6),
             "flagged_feature_count": int(flagged_count),
             "feature_reports": feature_reports,
-            "is_drifted": overall_score >= 1.0 or flagged_count > 0,
+            "is_drifted": overall_score >= self.settings.drift_alert_score_threshold or flagged_count > 0,
         }
+        alert_id = self._maybe_emit_drift_alert(task=task, artifact_id=artifact_id, drift_payload=payload)
+        if alert_id:
+            payload["alert_id"] = alert_id
+        return payload
 
     def analyze_feature(self, task: TaskType, feature_name: str) -> Tuple[Dict[str, float], str, str, Dict[str, Any]]:
         runtime = self._runtime(task)

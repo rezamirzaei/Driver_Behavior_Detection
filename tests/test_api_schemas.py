@@ -18,6 +18,10 @@ from src.api.schemas import (
     CorrelationMatrixResponse,
     CustomLearningRequest,
     CustomLearningResponse,
+    DriftAlertAcknowledgeRequest,
+    DriftAlertAcknowledgeResponse,
+    DriftAlertInfo,
+    DriftAlertListResponse,
     FeatureInfo,
     FeatureRequest,
     FeatureResponse,
@@ -361,6 +365,26 @@ class TestResponseModels:
             overall_drift_score=0.3,
             flagged_feature_count=0,
             is_drifted=False,
+            alert_id=None,
             feature_reports=[],
         )
         assert drift.is_drifted is False
+
+    def test_drift_alert_models(self) -> None:
+        alert = DriftAlertInfo(
+            alert_id="alert-1",
+            task="classification",
+            artifact_id="artifact-1",
+            overall_drift_score=2.1,
+            flagged_feature_count=3,
+            status="open",
+            detected_at="2026-02-18T00:00:00+00:00",
+        )
+        wrapper = DriftAlertListResponse(alerts=[alert])
+        assert wrapper.alerts[0].status == "open"
+
+        ack_req = DriftAlertAcknowledgeRequest(acknowledged_by="ops-team")
+        assert ack_req.acknowledged_by == "ops-team"
+
+        ack_resp = DriftAlertAcknowledgeResponse(alert_id="alert-1", status="acknowledged")
+        assert ack_resp.status == "acknowledged"

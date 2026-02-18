@@ -58,6 +58,7 @@ This project demonstrates end-to-end machine learning workflows for two telemati
 - **Signature-based training cache** for repeated runs (`task + model + sorted_features + params + data_version`).
 - **Persistent run history** in SQLite with run metadata, cache-hit tracking, artifact info, and payload retrieval.
 - **Database-backed storage with migrations** for SQLite/PostgreSQL, auto-applied on service startup.
+- **Alembic-based schema migrations** (standard migration versioning for long-term operations).
 - **Async training jobs** with pluggable backend:
   - Local threaded job manager (default lightweight mode).
   - Celery + Redis mode (docker compose stack).
@@ -66,6 +67,13 @@ This project demonstrates end-to-end machine learning workflows for two telemati
   - Persist trained model + preprocessing bundle (`joblib`)
   - Serve predictions from artifact endpoints
   - Run drift checks against artifact training references
+- **Drift alert automation**:
+  - Persist drift alerts with score/feature context
+  - Optional webhook dispatch for external incident workflows
+  - Alert listing + acknowledge endpoints for operations
+- **API hardening controls**:
+  - API-key auth middleware (`X-API-Key`)
+  - Per-key request quotas (sliding 1-minute window)
 - **Parquet-first dataset caching** with metadata sidecars (`.meta.json`) for schema/version/column tracking.
 - **Data version manifest support** and API exposure for reproducibility checks.
 - **Observability endpoint** for request and training timing metrics.
@@ -125,9 +133,13 @@ This project demonstrates end-to-end machine learning workflows for two telemati
 ```bash
 # Using uv (recommended)
 uv sync
+# Optional deep-learning extras (PyTorch)
+uv sync --extra deep-learning
 
 # Or using pip
 pip install -e .
+# Optional deep-learning extras (PyTorch)
+pip install -e ".[deep-learning]"
 ```
 
 ### 2. Run Notebooks
@@ -175,6 +187,12 @@ docker compose up --build
 This starts API + UI + Redis + Celery worker (async training jobs).
 Open `http://localhost:8000` for the dashboard.
 
+Torch is optional in container images for faster/smaller builds.
+To include CPU-only Torch in Docker image:
+```bash
+ABAX_INSTALL_TORCH=true docker compose build
+```
+
 ### 7. Apply Database Migrations (Manual)
 
 ```bash
@@ -218,6 +236,8 @@ Task-aware endpoints (`task=classification|regression`):
 - `GET /api/artifacts/{task}/{artifact_id}` - artifact metadata/details
 - `POST /api/artifacts/{task}/{artifact_id}/predict` - batch inference from artifact
 - `POST /api/artifacts/{task}/{artifact_id}/drift` - drift checks vs artifact reference stats
+- `GET /api/drift-alerts` - list drift alerts (filter by task/artifact/status)
+- `POST /api/drift-alerts/{alert_id}/ack` - acknowledge an alert
 - `GET /api/model/compare` - all-model benchmark for selected task
 - `GET /api/observability/metrics` - in-process request/training metrics snapshot
 
@@ -262,7 +282,9 @@ ABAX/
 │   │   ├── app.py                    # API routes
 │   │   ├── schemas.py                # Pydantic request/response contracts
 │   │   ├── services.py               # Task-aware analytics services
+│   │   ├── security.py               # API-key auth + request quota middleware
 │   │   ├── run_repository.py         # SQLite-backed run/cache persistence
+│   │   ├── db_migrations.py          # Alembic migration runner
 │   │   ├── job_manager.py            # Local/Celery async job backend facade
 │   │   ├── celery_tasks.py           # Celery worker task entrypoints
 │   │   ├── observability.py          # Request/training metrics registry
@@ -282,6 +304,8 @@ ABAX/
 │   ├── generate_notebook_figures.py  # Figure generation
 │   ├── generate_data_manifest.py     # Reproducibility manifest generation
 │   └── migrate_database.py           # Apply DB migrations manually
+├── alembic/                          # Alembic migration scripts
+├── alembic.ini                       # Alembic configuration
 │
 ├── .pre-commit-config.yaml           # Local quality hooks
 └── pyproject.toml                    # Dependencies
@@ -386,7 +410,7 @@ All figures are in `results/figures/`:
 | **UI (MVC)** | AngularJS 1.8 (module/service/controller), HTML/CSS |
 | **Async Jobs** | Local thread backend, Celery 5 + Redis 7 |
 | **Persistence** | SQLite/PostgreSQL run store, joblib model artifacts, Parquet caches |
-| **Deep Learning** | PyTorch 2.x |
+| **Deep Learning (Optional)** | PyTorch 2.x (`deep-learning` extra) |
 | **Visualization** | Matplotlib, Seaborn |
 | **Quality** | Ruff, MyPy, Pytest, pre-commit, GitHub Actions |
 | **Report** | LaTeX (tectonic compiler) |
@@ -408,6 +432,20 @@ rm uv.lock && uv sync
 
 - `docker compose up --build` starts `abax-app`, `abax-worker`, and `redis`.
 - If you previously saw `Read-only file system` errors for cache writes, ensure cache paths point to writable locations (current compose config already does this).
+- Dataset files are mounted at runtime (`./data:/app/data:ro`), keeping the image lean.
+
+### API Auth / Quota
+
+Set API key auth and per-key quota controls:
+```bash
+export ABAX_API_AUTH_ENABLED=true
+export ABAX_API_KEYS="my-key-1,my-key-2"
+export ABAX_API_QUOTA_PER_MINUTE=120
+```
+Then call protected endpoints with:
+```bash
+curl -H "X-API-Key: my-key-1" "http://localhost:8000/api/metadata?task=classification"
+```
 
 ### Worker Health Check
 ```bash

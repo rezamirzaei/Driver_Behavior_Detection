@@ -1,7 +1,4 @@
-"""Database-backed persistence for training cache, runs, and model artifacts.
-
-Supports SQLite and PostgreSQL via SQLAlchemy, with built-in schema migrations.
-"""
+"""Database-backed persistence for training cache, runs, artifacts, and drift alerts."""
 
 from __future__ import annotations
 
@@ -9,87 +6,13 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional
 import uuid
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, RowMapping
 
-MIGRATIONS: Sequence[Tuple[str, str]] = (
-    (
-        "001_initial",
-        """
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-            version TEXT PRIMARY KEY,
-            applied_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS training_cache (
-            signature TEXT PRIMARY KEY,
-            task TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            model_name TEXT NOT NULL,
-            feature_names_json TEXT NOT NULL,
-            params_json TEXT NOT NULL,
-            data_version TEXT NOT NULL,
-            result_json TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            hit_count INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS training_runs (
-            run_id TEXT PRIMARY KEY,
-            signature TEXT NOT NULL,
-            task TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            model_name TEXT NOT NULL,
-            feature_names_json TEXT NOT NULL,
-            params_json TEXT NOT NULL,
-            data_version TEXT NOT NULL,
-            status TEXT NOT NULL,
-            cache_hit INTEGER NOT NULL DEFAULT 0,
-            started_at TEXT NOT NULL,
-            finished_at TEXT,
-            duration_ms REAL,
-            artifact_id TEXT,
-            artifact_path TEXT,
-            metrics_json TEXT,
-            cv_json TEXT,
-            error TEXT,
-            result_json TEXT
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_training_runs_task_started ON training_runs(task, started_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_training_runs_signature ON training_runs(signature);
-        CREATE INDEX IF NOT EXISTS idx_training_runs_status ON training_runs(status);
-        """,
-    ),
-    (
-        "002_artifacts",
-        """
-        CREATE TABLE IF NOT EXISTS model_artifacts (
-            artifact_key TEXT PRIMARY KEY,
-            task TEXT NOT NULL,
-            artifact_id TEXT NOT NULL,
-            model_name TEXT NOT NULL,
-            signature TEXT NOT NULL,
-            data_version TEXT NOT NULL,
-            feature_names_json TEXT NOT NULL,
-            reference_stats_json TEXT NOT NULL,
-            artifact_file_path TEXT NOT NULL,
-            metadata_file_path TEXT NOT NULL,
-            result_payload_json TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            is_active INTEGER NOT NULL DEFAULT 1
-        );
-
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_model_artifacts_task_artifact_id
-            ON model_artifacts(task, artifact_id);
-        CREATE INDEX IF NOT EXISTS idx_model_artifacts_updated_at ON model_artifacts(updated_at DESC);
-        """,
-    ),
-)
+from src.api.db_migrations import apply_migrations
 
 
 def _utc_now_iso() -> str:
@@ -126,9 +49,10 @@ class TrainingRunRepository:
 
     def __init__(self, database_url: str, *, project_root: Optional[Path] = None) -> None:
         self._lock = Lock()
-        self._database_url = _resolve_database_url(database_url, project_root=project_root)
+        self._project_root = (project_root or Path(__file__).resolve().parents[2]).resolve()
+        self._database_url = _resolve_database_url(database_url, project_root=self._project_root)
+        apply_migrations(self._database_url, project_root=self._project_root)
         self._engine = self._build_engine(self._database_url)
-        self._migrate()
 
     @staticmethod
     def _build_engine(database_url: str) -> Engine:
@@ -142,39 +66,6 @@ class TrainingRunRepository:
                 connect_args={"check_same_thread": False},
             )
         return create_engine(database_url, future=True, pool_pre_ping=True)
-
-    @staticmethod
-    def _split_sql_script(script: str) -> List[str]:
-        statements = [stmt.strip() for stmt in script.split(";")]
-        return [stmt for stmt in statements if stmt]
-
-    def _migrate(self) -> None:
-        with self._lock, self._engine.begin() as conn:
-            conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS schema_migrations (
-                        version TEXT PRIMARY KEY,
-                        applied_at TEXT NOT NULL
-                    )
-                    """
-                )
-            )
-
-            rows = conn.execute(text("SELECT version FROM schema_migrations")).mappings().all()
-            applied = {str(row["version"]) for row in rows}
-
-            for version, script in MIGRATIONS:
-                if version in applied:
-                    continue
-
-                for statement in self._split_sql_script(script):
-                    conn.exec_driver_sql(statement)
-
-                conn.execute(
-                    text("INSERT INTO schema_migrations (version, applied_at) VALUES (:version, :applied_at)"),
-                    {"version": version, "applied_at": _utc_now_iso()},
-                )
 
     @staticmethod
     def _row_to_dict(row: RowMapping) -> Dict[str, Any]:
@@ -590,3 +481,126 @@ class TrainingRunRepository:
             "error": str(item["error"]) if item.get("error") else None,
             "result": _json_load(item.get("result_json")),
         }
+
+    def create_drift_alert(
+        self,
+        *,
+        task: str,
+        artifact_id: str,
+        overall_drift_score: float,
+        flagged_feature_count: int,
+        payload: Dict[str, Any],
+    ) -> str:
+        """Persist one drift alert and return its identifier."""
+        alert_id = str(uuid.uuid4())
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO drift_alerts (
+                        alert_id, task, artifact_id, overall_drift_score, flagged_feature_count,
+                        payload_json, status, detected_at
+                    ) VALUES (
+                        :alert_id, :task, :artifact_id, :overall_drift_score, :flagged_feature_count,
+                        :payload_json, :status, :detected_at
+                    )
+                    """
+                ),
+                {
+                    "alert_id": alert_id,
+                    "task": task,
+                    "artifact_id": artifact_id,
+                    "overall_drift_score": float(overall_drift_score),
+                    "flagged_feature_count": int(flagged_feature_count),
+                    "payload_json": _json_dump(payload),
+                    "status": "open",
+                    "detected_at": _utc_now_iso(),
+                },
+            )
+        return alert_id
+
+    def get_latest_drift_alert(self, *, task: str, artifact_id: str) -> Optional[Dict[str, Any]]:
+        """Return latest drift alert for one task/artifact."""
+        with self._lock, self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT alert_id, task, artifact_id, overall_drift_score, flagged_feature_count,
+                               payload_json, status, detected_at, acknowledged_at, acknowledged_by
+                        FROM drift_alerts
+                        WHERE task = :task AND artifact_id = :artifact_id
+                        ORDER BY detected_at DESC
+                        LIMIT 1
+                        """
+                    ),
+                    {"task": task, "artifact_id": artifact_id},
+                )
+                .mappings()
+                .first()
+            )
+
+        if row is None:
+            return None
+        payload = self._row_to_dict(row)
+        payload["payload"] = _json_load(payload.pop("payload_json", ""))
+        return payload
+
+    def list_drift_alerts(
+        self,
+        *,
+        task: Optional[str],
+        artifact_id: Optional[str],
+        limit: int,
+        status: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        """List drift alerts, newest first."""
+        query = """
+            SELECT alert_id, task, artifact_id, overall_drift_score, flagged_feature_count,
+                   payload_json, status, detected_at, acknowledged_at, acknowledged_by
+            FROM drift_alerts
+            WHERE 1 = 1
+        """
+        params: Dict[str, Any] = {"limit": int(limit)}
+        if task:
+            query += " AND task = :task"
+            params["task"] = task
+        if artifact_id:
+            query += " AND artifact_id = :artifact_id"
+            params["artifact_id"] = artifact_id
+        if status:
+            query += " AND status = :status"
+            params["status"] = status
+        query += " ORDER BY detected_at DESC LIMIT :limit"
+
+        with self._lock, self._engine.begin() as conn:
+            rows = conn.execute(text(query), params).mappings().all()
+
+        payloads: List[Dict[str, Any]] = []
+        for row in rows:
+            item = self._row_to_dict(row)
+            item["payload"] = _json_load(item.pop("payload_json", ""))
+            payloads.append(item)
+        return payloads
+
+    def acknowledge_drift_alert(self, *, alert_id: str, acknowledged_by: str) -> bool:
+        """Mark one drift alert as acknowledged. Returns False when not found."""
+        with self._lock, self._engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    UPDATE drift_alerts
+                    SET status = :status,
+                        acknowledged_at = :acknowledged_at,
+                        acknowledged_by = :acknowledged_by
+                    WHERE alert_id = :alert_id
+                    """
+                ),
+                {
+                    "status": "acknowledged",
+                    "acknowledged_at": _utc_now_iso(),
+                    "acknowledged_by": acknowledged_by,
+                    "alert_id": alert_id,
+                },
+            )
+        return bool(result.rowcount)

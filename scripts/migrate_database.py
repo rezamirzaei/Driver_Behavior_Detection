@@ -11,13 +11,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.api.config import get_settings
-from src.api.run_repository import TrainingRunRepository
+from src.api.db_migrations import apply_migrations
+from src.api.run_repository import _resolve_database_url
 
 
 def main() -> None:
     settings = get_settings()
-    _ = TrainingRunRepository(settings.database_url, project_root=settings.resolve_path("."))
-    print(f"Applied migrations successfully for database URL: {settings.database_url}")
+    database_url = _resolve_database_url(settings.database_url, project_root=PROJECT_ROOT)
+    apply_migrations(database_url=database_url, project_root=PROJECT_ROOT)
+    print(f"Applied Alembic migrations successfully for database URL: {database_url}")
 
 
 if __name__ == "__main__":

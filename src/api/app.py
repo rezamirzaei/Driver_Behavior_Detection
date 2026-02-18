@@ -14,7 +14,7 @@ import matplotlib
 matplotlib.use("Agg")
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.config import get_settings
@@ -36,6 +36,10 @@ from src.api.schemas import (
     CustomLearningRequest,
     CustomLearningResponse,
     DataVersionResponse,
+    DriftAlertAcknowledgeRequest,
+    DriftAlertAcknowledgeResponse,
+    DriftAlertInfo,
+    DriftAlertListResponse,
     FeatureInfo,
     FeatureListResponse,
     FeatureRequest,
@@ -60,6 +64,7 @@ from src.api.schemas import (
     TwoFeatureRequest,
     TwoFeatureResponse,
 )
+from src.api.security import ApiSecurityManager
 from src.api.services import AnalyticsService, build_service
 from src.data.versioning import build_data_manifest
 
@@ -68,18 +73,20 @@ logger = logging.getLogger(__name__)
 _service: Optional[AnalyticsService] = None
 _job_manager: Optional[JobManager] = None
 _observability: Optional[ObservabilityRegistry] = None
+_security_manager: Optional[ApiSecurityManager] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize runtime service during startup."""
     del app
-    global _job_manager, _observability, _service
+    global _job_manager, _observability, _security_manager, _service
 
     settings = get_settings()
     try:
         _service = build_service(settings)
         _observability = ObservabilityRegistry()
+        _security_manager = ApiSecurityManager(settings)
         if hasattr(_service, "set_observability"):
             _service.set_observability(_observability)
         _job_manager = JobManager(
@@ -100,6 +107,7 @@ async def lifespan(app: FastAPI):
         _service = None
         _job_manager = None
         _observability = None
+        _security_manager = None
 
     yield
 
@@ -116,6 +124,25 @@ app = FastAPI(
 async def request_timing_middleware(request: Request, call_next):
     """Emit request timing metrics for observability."""
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+
+    decision = _security_manager.evaluate(request) if _security_manager is not None else None
+    if decision is not None and not decision.allowed:
+        headers = {"X-Request-ID": request_id}
+        if decision.retry_after_seconds > 0:
+            headers["Retry-After"] = str(decision.retry_after_seconds)
+        if decision.limit > 0:
+            headers["X-RateLimit-Limit"] = str(decision.limit)
+            headers["X-RateLimit-Remaining"] = str(decision.remaining)
+        response = JSONResponse(status_code=decision.status_code, content={"detail": decision.detail}, headers=headers)
+        if _observability is not None:
+            _observability.record_request(
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration_ms=0.0,
+            )
+        return response
+
     started = time.perf_counter()
     response = await call_next(request)
     elapsed_ms = (time.perf_counter() - started) * 1000.0
@@ -138,6 +165,9 @@ async def request_timing_middleware(request: Request, call_next):
     )
     response.headers["X-Process-Time-ms"] = f"{elapsed_ms:.2f}"
     response.headers["X-Request-ID"] = request_id
+    if decision is not None and decision.limit > 0:
+        response.headers["X-RateLimit-Limit"] = str(decision.limit)
+        response.headers["X-RateLimit-Remaining"] = str(decision.remaining)
     return response
 
 
@@ -468,6 +498,32 @@ def drift_from_artifact(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     payload["feature_reports"] = [ArtifactDriftFeatureReport(**item) for item in payload.get("feature_reports", [])]
     return ArtifactDriftResponse(**payload)
+
+
+@app.get("/api/drift-alerts", response_model=DriftAlertListResponse)
+def list_drift_alerts(
+    task: Optional[TaskType] = None,
+    artifact_id: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+    service: AnalyticsService = Depends(require_service),
+) -> DriftAlertListResponse:
+    """List persisted drift alerts for operational monitoring."""
+    rows = service.list_drift_alerts(task=task, artifact_id=artifact_id, limit=limit, status=status)
+    return DriftAlertListResponse(alerts=[DriftAlertInfo(**row) for row in rows])
+
+
+@app.post("/api/drift-alerts/{alert_id}/ack", response_model=DriftAlertAcknowledgeResponse)
+def acknowledge_drift_alert(
+    alert_id: str,
+    request: DriftAlertAcknowledgeRequest,
+    service: AnalyticsService = Depends(require_service),
+) -> DriftAlertAcknowledgeResponse:
+    """Acknowledge one open drift alert."""
+    ok = service.acknowledge_drift_alert(alert_id=alert_id, acknowledged_by=request.acknowledged_by)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Drift alert '{alert_id}' not found")
+    return DriftAlertAcknowledgeResponse(alert_id=alert_id, status="acknowledged")
 
 
 @app.get("/api/model/compare", response_model=ModelComparisonResponse)

@@ -70,6 +70,21 @@ job = post_json(
 )
 job_id = job["job_id"]
 
+cancel_job = post_json(
+    "/api/model/custom-learning/job",
+    {
+        "task": "classification",
+        "model_name": models[0],
+        "feature_names": features,
+        "cv_folds": 1,
+        "persist_artifact": False,
+    },
+)
+cancel_id = cancel_job["job_id"]
+cancel_resp = post_json(f"/api/jobs/{cancel_id}/cancel", {})
+if cancel_resp.get("status") not in {"cancel_requested", "canceled", "completed", "failed"}:
+    raise RuntimeError(f"Unexpected cancel response: {cancel_resp}")
+
 status_payload = None
 for _ in range(180):
     status_payload = get_json(f"/api/jobs/{job_id}")
@@ -96,9 +111,24 @@ pred = post_json(f"/api/artifacts/classification/{artifact_id}/predict", {"recor
 if pred.get("n_records") != 1:
     raise RuntimeError(f"Unexpected prediction payload: {pred}")
 
-drift = post_json(f"/api/artifacts/classification/{artifact_id}/drift", {"records": [sample_record]})
+drift_input = {features[0]: 1_000_000.0, features[1]: -1_000_000.0}
+drift = post_json(f"/api/artifacts/classification/{artifact_id}/drift", {"records": [drift_input]})
 if "overall_drift_score" not in drift:
     raise RuntimeError(f"Unexpected drift payload: {drift}")
+if not drift.get("is_drifted"):
+    raise RuntimeError(f"Expected drift to be flagged for extreme sample: {drift}")
+if not drift.get("alert_id"):
+    raise RuntimeError(f"Expected drift alert id in response: {drift}")
+
+alerts = get_json("/api/drift-alerts", {"task": "classification", "artifact_id": artifact_id, "limit": 5})
+if not alerts.get("alerts"):
+    raise RuntimeError("Expected at least one drift alert after drift check.")
+ack = post_json(
+    f"/api/drift-alerts/{drift['alert_id']}/ack",
+    {"acknowledged_by": "docker-e2e"},
+)
+if ack.get("status") != "acknowledged":
+    raise RuntimeError(f"Unexpected drift alert acknowledge response: {ack}")
 
 runs = get_json("/api/training-runs", {"task": "classification"})
 if not runs.get("runs"):
@@ -108,5 +138,5 @@ metrics = get_json("/api/observability/metrics")
 if "requests" not in metrics:
     raise RuntimeError("Observability endpoint missing requests payload.")
 
-print(json.dumps({"status": "ok", "artifact_id": artifact_id}))
+print(json.dumps({"status": "ok", "artifact_id": artifact_id, "drift_alert_id": drift["alert_id"]}))
 PY

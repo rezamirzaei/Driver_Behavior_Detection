@@ -130,6 +130,7 @@ class _FakeService:
             "overall_drift_score": 0.4,
             "flagged_feature_count": 0,
             "is_drifted": False,
+            "alert_id": None,
             "feature_reports": [
                 {
                     "feature": "speed_mean",
@@ -141,6 +142,32 @@ class _FakeService:
                 }
             ],
         }
+
+    def list_drift_alerts(
+        self,
+        task: str | None = None,
+        artifact_id: str | None = None,
+        limit: int = 50,
+        status: str | None = None,
+    ):
+        del task, artifact_id, limit, status
+        return [
+            {
+                "alert_id": "alert-001",
+                "task": "classification",
+                "artifact_id": "artifact-001",
+                "overall_drift_score": 1.8,
+                "flagged_feature_count": 2,
+                "status": "open",
+                "detected_at": "2026-02-18T00:05:00+00:00",
+                "acknowledged_at": None,
+                "acknowledged_by": None,
+            }
+        ]
+
+    def acknowledge_drift_alert(self, *, alert_id: str, acknowledged_by: str) -> bool:
+        del acknowledged_by
+        return alert_id == "alert-001"
 
     def list_training_runs(self, task: str | None = None, limit: int = 30):
         del limit
@@ -203,6 +230,7 @@ def _client(monkeypatch):
     app_module._service = None
     app_module._job_manager = None
     app_module._observability = None
+    app_module._security_manager = None
     return TestClient(app_module.app)
 
 
@@ -326,3 +354,17 @@ def test_artifact_endpoints_contract(monkeypatch) -> None:
         )
         assert drift_response.status_code == 200
         assert drift_response.json()["is_drifted"] is False
+
+
+def test_drift_alert_endpoints_contract(monkeypatch) -> None:
+    with _client(monkeypatch) as client:
+        list_response = client.get(
+            "/api/drift-alerts", params={"task": "classification", "artifact_id": "artifact-001"}
+        )
+        assert list_response.status_code == 200
+        alerts = list_response.json()["alerts"]
+        assert alerts[0]["alert_id"] == "alert-001"
+
+        ack_response = client.post("/api/drift-alerts/alert-001/ack", json={"acknowledged_by": "qa"})
+        assert ack_response.status_code == 200
+        assert ack_response.json()["status"] == "acknowledged"
