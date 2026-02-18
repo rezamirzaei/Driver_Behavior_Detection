@@ -34,7 +34,14 @@ class AppSettings(BaseSettings):
     classification_raw_dir: str = "data/UAH-DRIVESET-v1"
     regression_cache_csv: str = "data/processed/epa_fuel_economy.parquet"
     data_manifest_path: str = "data/processed/data_manifest.json"
+    database_url: str = "sqlite:///results/analytics_runs.sqlite"
     run_store_path: str = "results/analytics_runs.sqlite"
+    artifact_dir: str = "results/model_artifacts"
+    celery_task_max_retries: int = Field(default=3, ge=0, le=10)
+    celery_retry_backoff: bool = True
+    celery_retry_backoff_max: int = Field(default=60, ge=1, le=600)
+    celery_soft_time_limit_seconds: int = Field(default=240, ge=30, le=3600)
+    celery_time_limit_seconds: int = Field(default=300, ge=60, le=7200)
 
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
 

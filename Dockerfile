@@ -23,6 +23,8 @@ RUN pip install --upgrade pip \
         "plotly>=5.18.0" \
         "pydantic>=2.0.0,<3.0.0" \
         "pydantic-settings>=2.2.0,<3.0.0" \
+        "sqlalchemy>=2.0.0,<3.0.0" \
+        "psycopg[binary]>=3.1.0,<4.0.0" \
         "scikit-learn>=1.3.0,<1.6.0" \
         "scipy>=1.11.0,<1.14.0" \
         "seaborn>=0.12.0,<0.14.0" \

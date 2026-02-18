@@ -52,6 +52,10 @@
             return $http.get("/api/jobs/" + encodeURIComponent(jobId));
         };
 
+        this.cancelJob = function (jobId) {
+            return $http.post("/api/jobs/" + encodeURIComponent(jobId) + "/cancel");
+        };
+
         this.getDataVersions = function () {
             return $http.get("/api/data/version");
         };
@@ -66,6 +70,28 @@
 
         this.getTrainingRun = function (runId) {
             return $http.get("/api/training-runs/" + encodeURIComponent(runId));
+        };
+
+        this.getArtifacts = function (task, limit) {
+            return $http.get("/api/artifacts", { params: { task: task, limit: limit || 50 } });
+        };
+
+        this.getArtifact = function (task, artifactId) {
+            return $http.get("/api/artifacts/" + encodeURIComponent(task) + "/" + encodeURIComponent(artifactId));
+        };
+
+        this.predictWithArtifact = function (task, artifactId, payload) {
+            return $http.post(
+                "/api/artifacts/" + encodeURIComponent(task) + "/" + encodeURIComponent(artifactId) + "/predict",
+                payload
+            );
+        };
+
+        this.detectArtifactDrift = function (task, artifactId, payload) {
+            return $http.post(
+                "/api/artifacts/" + encodeURIComponent(task) + "/" + encodeURIComponent(artifactId) + "/drift",
+                payload
+            );
         };
 
         this.compareModels = function (task) {

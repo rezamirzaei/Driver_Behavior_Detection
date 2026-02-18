@@ -8,6 +8,11 @@ import pytest
 from src.api.schemas import (
     ALLOWED_FEATURES_BY_TASK,
     ALLOWED_MODELS_BY_TASK,
+    ArtifactDetailResponse,
+    ArtifactDriftResponse,
+    ArtifactInfo,
+    ArtifactListResponse,
+    ArtifactPredictResponse,
     ConfusionMatrixRequest,
     ConfusionMatrixResponse,
     CorrelationMatrixResponse,
@@ -17,6 +22,8 @@ from src.api.schemas import (
     FeatureRequest,
     FeatureResponse,
     HealthResponse,
+    JobCancelResponse,
+    JobStatusResponse,
     ModelComparisonResponse,
     ModelInfo,
     ModelRequest,
@@ -304,3 +311,56 @@ class TestResponseModels:
             training={},
         )
         assert "GET /api/health" in payload.requests
+
+    def test_job_status_and_cancel_models(self) -> None:
+        status_payload = JobStatusResponse(
+            job_id="job-1",
+            status="cancel_requested",
+            created_at="2026-02-18T00:00:00+00:00",
+        )
+        assert status_payload.status == "cancel_requested"
+
+        cancel_payload = JobCancelResponse(job_id="job-1", status="canceled")
+        assert cancel_payload.status == "canceled"
+
+    def test_artifact_models(self) -> None:
+        info = ArtifactInfo(
+            task="classification",
+            artifact_id="artifact-1",
+            model_name="Random Forest",
+            signature="sig-1",
+            data_version="v1",
+            updated_at="2026-02-18T00:00:00+00:00",
+            artifact_file_path="results/model_artifacts/classification-artifact-1.joblib",
+            metadata_file_path="results/model_artifacts/classification-artifact-1.json",
+        )
+        wrapper = ArtifactListResponse(artifacts=[info])
+        assert wrapper.artifacts[0].artifact_id == "artifact-1"
+
+        detail = ArtifactDetailResponse(
+            **info.model_dump(),
+            feature_names=["speed_mean", "speed_std"],
+            reference_stats={"numeric": {}},
+            result_payload={"model_name": "Random Forest"},
+        )
+        assert len(detail.feature_names) == 2
+
+        pred = ArtifactPredictResponse(
+            task="classification",
+            artifact_id="artifact-1",
+            n_records=2,
+            predictions=["NORMAL", "DROWSY"],
+            probabilities=[],
+        )
+        assert pred.n_records == 2
+
+        drift = ArtifactDriftResponse(
+            task="classification",
+            artifact_id="artifact-1",
+            n_records=2,
+            overall_drift_score=0.3,
+            flagged_feature_count=0,
+            is_drifted=False,
+            feature_reports=[],
+        )
+        assert drift.is_drifted is False

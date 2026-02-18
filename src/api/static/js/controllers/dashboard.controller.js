@@ -38,6 +38,11 @@
             persistArtifact: false,
             artifactId: ""
         };
+        vm.artifactLab = {
+            artifacts: [],
+            selectedArtifactId: "",
+            recordsJson: "[\n  {}\n]"
+        };
         vm.availableCvFolds = [1, 3, 5];
         vm.selectedFeatureInfo = null;
         vm.selectedModelInfo = null;
@@ -55,7 +60,8 @@
             diagnostics: false,
             compare: false,
             custom: false,
-            history: false
+            history: false,
+            artifact: false
         };
 
         vm.errors = {
@@ -66,7 +72,8 @@
             diagnostics: null,
             compare: null,
             custom: null,
-            history: null
+            history: null,
+            artifact: null
         };
 
         vm.results = {
@@ -75,7 +82,9 @@
             corr: null,
             diagnostics: null,
             compare: null,
-            custom: null
+            custom: null,
+            artifactPredict: null,
+            artifactDrift: null
         };
 
         vm.resultKeys = {
@@ -97,6 +106,9 @@
         vm.runCustomLearning = runCustomLearning;
         vm.loadRunHistory = loadRunHistory;
         vm.loadHistoricalRun = loadHistoricalRun;
+        vm.loadArtifacts = loadArtifacts;
+        vm.runArtifactPredict = runArtifactPredict;
+        vm.runArtifactDrift = runArtifactDrift;
 
         init();
 
@@ -121,6 +133,10 @@
             vm.customJobId = null;
             vm.customJobStatus = null;
             stopCustomJobPolling();
+            vm.artifactLab.artifacts = [];
+            vm.artifactLab.selectedArtifactId = "";
+            vm.results.artifactPredict = null;
+            vm.results.artifactDrift = null;
 
             vm.errors.feature = null;
             vm.errors.pair = null;
@@ -129,6 +145,7 @@
             vm.errors.compare = null;
             vm.errors.custom = null;
             vm.errors.history = null;
+            vm.errors.artifact = null;
         }
 
         function onTaskChange() {
@@ -165,6 +182,7 @@
                     selectCustomFeatures(vm.numericFeatures.length ? "numeric" : "all");
                     onCustomFeatureChange();
                     loadRunHistory();
+                    loadArtifacts();
 
                     if (vm.numericFeatures.length >= 2) {
                         vm.featurePair.first = vm.numericFeatures[0].name;
@@ -456,6 +474,98 @@
                 })
                 .finally(function () {
                     vm.loading.history = false;
+                });
+        }
+
+        function loadArtifacts() {
+            vm.loading.artifact = true;
+            vm.errors.artifact = null;
+
+            ApiService.getArtifacts(vm.task, 50)
+                .then(function (response) {
+                    vm.artifactLab.artifacts = response.data.artifacts || [];
+                    vm.artifactLab.selectedArtifactId = vm.artifactLab.artifacts.length
+                        ? vm.artifactLab.artifacts[0].artifact_id
+                        : "";
+                })
+                .catch(function (error) {
+                    vm.errors.artifact = parseError(error, "Failed to load artifacts.");
+                })
+                .finally(function () {
+                    vm.loading.artifact = false;
+                });
+        }
+
+        function parseArtifactRecordsJson() {
+            var parsed;
+            try {
+                parsed = JSON.parse(vm.artifactLab.recordsJson || "[]");
+            } catch (error) {
+                throw new Error("Records JSON is invalid.");
+            }
+            if (!Array.isArray(parsed) || parsed.length === 0) {
+                throw new Error("Records JSON must be a non-empty array.");
+            }
+            return parsed;
+        }
+
+        function runArtifactPredict() {
+            vm.errors.artifact = null;
+            vm.results.artifactPredict = null;
+
+            if (!vm.artifactLab.selectedArtifactId) {
+                vm.errors.artifact = "Select an artifact first.";
+                return;
+            }
+
+            var records;
+            try {
+                records = parseArtifactRecordsJson();
+            } catch (error) {
+                vm.errors.artifact = error.message || "Invalid records JSON.";
+                return;
+            }
+
+            vm.loading.artifact = true;
+            ApiService.predictWithArtifact(vm.task, vm.artifactLab.selectedArtifactId, { records: records })
+                .then(function (response) {
+                    vm.results.artifactPredict = response.data;
+                })
+                .catch(function (error) {
+                    vm.errors.artifact = parseError(error, "Artifact prediction failed.");
+                })
+                .finally(function () {
+                    vm.loading.artifact = false;
+                });
+        }
+
+        function runArtifactDrift() {
+            vm.errors.artifact = null;
+            vm.results.artifactDrift = null;
+
+            if (!vm.artifactLab.selectedArtifactId) {
+                vm.errors.artifact = "Select an artifact first.";
+                return;
+            }
+
+            var records;
+            try {
+                records = parseArtifactRecordsJson();
+            } catch (error) {
+                vm.errors.artifact = error.message || "Invalid records JSON.";
+                return;
+            }
+
+            vm.loading.artifact = true;
+            ApiService.detectArtifactDrift(vm.task, vm.artifactLab.selectedArtifactId, { records: records })
+                .then(function (response) {
+                    vm.results.artifactDrift = response.data;
+                })
+                .catch(function (error) {
+                    vm.errors.artifact = parseError(error, "Artifact drift check failed.");
+                })
+                .finally(function () {
+                    vm.loading.artifact = false;
                 });
         }
 

@@ -59,6 +59,7 @@ data/UAH-DRIVESET-v1/*/*.avi
 # Results
 results/*.json
 results/*.sqlite
+results/model_artifacts/*.joblib
 results/model_artifacts/*.json
 results/figures/*.png
 !results/.gitkeep

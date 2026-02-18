@@ -8,7 +8,7 @@ from src.api.run_repository import TrainingRunRepository
 
 
 def test_cache_roundtrip(tmp_path: Path) -> None:
-    repo = TrainingRunRepository(tmp_path / "runs.sqlite")
+    repo = TrainingRunRepository(f"sqlite:///{tmp_path / 'runs.sqlite'}")
     payload = {"task": "classification", "validation_metrics": {"accuracy": 0.82}}
 
     repo.set_cached_result(
@@ -28,7 +28,7 @@ def test_cache_roundtrip(tmp_path: Path) -> None:
 
 
 def test_run_lifecycle_roundtrip(tmp_path: Path) -> None:
-    repo = TrainingRunRepository(tmp_path / "runs.sqlite")
+    repo = TrainingRunRepository(f"sqlite:///{tmp_path / 'runs.sqlite'}")
 
     run_id = repo.start_run(
         signature="sig-2",
@@ -65,3 +65,28 @@ def test_run_lifecycle_roundtrip(tmp_path: Path) -> None:
     detail = repo.get_run(run_id)
     assert detail is not None
     assert detail["result"]["validation_metrics"]["accuracy"] == 0.84
+
+
+def test_artifact_roundtrip(tmp_path: Path) -> None:
+    repo = TrainingRunRepository(f"sqlite:///{tmp_path / 'runs.sqlite'}")
+    repo.upsert_model_artifact(
+        task="classification",
+        artifact_id="artifact-1",
+        model_name="Random Forest",
+        signature="sig-1",
+        data_version="data-v1",
+        feature_names=["speed_mean", "speed_std"],
+        reference_stats={"numeric": {"speed_mean": {"mean": 30.0, "std": 5.0}}},
+        artifact_file_path="results/model_artifacts/classification-artifact-1.joblib",
+        metadata_file_path="results/model_artifacts/classification-artifact-1.json",
+        result_payload={"validation_metrics": {"accuracy": 0.8}},
+    )
+
+    rows = repo.list_model_artifacts(task="classification", limit=10)
+    assert len(rows) == 1
+    assert rows[0]["artifact_id"] == "artifact-1"
+
+    detail = repo.get_model_artifact(task="classification", artifact_id="artifact-1")
+    assert detail is not None
+    assert detail["feature_names"] == ["speed_mean", "speed_std"]
+    assert detail["result_payload"]["validation_metrics"]["accuracy"] == 0.8

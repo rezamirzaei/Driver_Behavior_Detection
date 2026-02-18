@@ -164,6 +164,7 @@ label.inline-check input[type="checkbox"] {
 
 select,
 input[type="text"],
+textarea,
 button.action {
     width: 100%;
     border: 1px solid var(--line);
@@ -181,6 +182,13 @@ select {
 
 input[type="text"] {
     border: 1px solid var(--line);
+}
+
+textarea {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    resize: vertical;
+    min-height: 120px;
 }
 
 .multi-select {

@@ -58,6 +58,7 @@
             <button type="button" ng-class="{'active': vm.activeTab === 'corr'}" ng-click="vm.activeTab = 'corr'">Correlation Matrix</button>
             <button type="button" ng-class="{'active': vm.activeTab === 'diagnostics'}" ng-click="vm.activeTab = 'diagnostics'">Model Diagnostics</button>
             <button type="button" ng-class="{'active': vm.activeTab === 'compare'}" ng-click="vm.activeTab = 'compare'">Model Comparison</button>
+            <button type="button" ng-class="{'active': vm.activeTab === 'artifact'}" ng-click="vm.activeTab = 'artifact'">Artifact Serving</button>
         </div>
 
         <article class="card" ng-show="vm.activeTab === 'studio'">
@@ -408,6 +409,74 @@
                         <tbody>
                         <tr ng-repeat="row in vm.results.compare.results">
                             <td ng-repeat="key in vm.resultKeys.compare">{{ vm.renderCell(row[key]) }}</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </article>
+
+        <article class="card" ng-show="vm.activeTab === 'artifact'">
+            <h3>Artifact Serving + Drift</h3>
+            <p>Use saved artifacts for batch inference and drift checks on new samples.</p>
+            <div class="field-row">
+                <label for="artifactSelect">Artifact</label>
+                <select id="artifactSelect" ng-model="vm.artifactLab.selectedArtifactId" ng-options="a.artifact_id as (a.artifact_id + ' - ' + a.model_name) for a in vm.artifactLab.artifacts"></select>
+            </div>
+            <div class="field-row">
+                <label for="artifactRecordsJson">Records JSON (array of objects)</label>
+                <textarea id="artifactRecordsJson" rows="7" ng-model="vm.artifactLab.recordsJson"></textarea>
+            </div>
+            <div class="selection-toolbar">
+                <button type="button" class="chip-action" ng-click="vm.loadArtifacts()" ng-disabled="vm.loading.artifact">Refresh Artifacts</button>
+            </div>
+            <div class="field-split">
+                <button type="button" class="action" ng-click="vm.runArtifactPredict()" ng-disabled="vm.loading.artifact">Predict</button>
+                <button type="button" class="action" ng-click="vm.runArtifactDrift()" ng-disabled="vm.loading.artifact">Detect Drift</button>
+            </div>
+            <p class="error" ng-if="vm.errors.artifact">{{ vm.errors.artifact }}</p>
+            <p class="loading" ng-if="vm.loading.artifact">Running artifact operation...</p>
+
+            <div class="result" ng-if="vm.results.artifactPredict">
+                <p class="explanation">Returned {{ vm.results.artifactPredict.n_records }} prediction(s).</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Prediction</th>
+                            <th>Probabilities</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr ng-repeat="pred in vm.results.artifactPredict.predictions track by $index">
+                            <td>{{ $index + 1 }}</td>
+                            <td>{{ pred }}</td>
+                            <td>{{ vm.results.artifactPredict.probabilities[$index] ? (vm.results.artifactPredict.probabilities[$index] | json) : '-' }}</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="result" ng-if="vm.results.artifactDrift">
+                <p class="explanation">Overall drift score: {{ vm.results.artifactDrift.overall_drift_score | number:4 }} (flagged features: {{ vm.results.artifactDrift.flagged_feature_count }})</p>
+                <div class="table-wrap" ng-if="vm.results.artifactDrift.feature_reports.length">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>Type</th>
+                            <th>Score</th>
+                            <th>Flagged</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr ng-repeat="item in vm.results.artifactDrift.feature_reports">
+                            <td>{{ item.feature }}</td>
+                            <td>{{ item.type }}</td>
+                            <td>{{ item.score | number:4 }}</td>
+                            <td>{{ item.flagged }}</td>
                         </tr>
                         </tbody>
                     </table>

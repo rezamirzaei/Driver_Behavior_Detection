@@ -326,12 +326,19 @@ class JobStatusResponse(BaseModel):
     """Response for job polling endpoint."""
 
     job_id: str
-    status: Literal["pending", "running", "completed", "failed"]
+    status: Literal["pending", "running", "cancel_requested", "canceled", "completed", "failed"]
     created_at: str
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+
+class JobCancelResponse(BaseModel):
+    """Response for job cancellation endpoint."""
+
+    job_id: str
+    status: Literal["cancel_requested", "canceled", "completed", "failed", "not_found"]
 
 
 class DataVersionResponse(BaseModel):
@@ -357,7 +364,7 @@ class TrainingRunSummary(BaseModel):
     task: TaskType
     operation: str
     model_name: str
-    status: Literal["running", "completed", "failed"]
+    status: Literal["running", "completed", "failed", "canceled"]
     cache_hit: bool = False
     started_at: str
     finished_at: Optional[str] = None
@@ -383,6 +390,79 @@ class TrainingRunDetailResponse(TrainingRunSummary):
     params: Dict[str, Any] = Field(default_factory=dict)
     data_version: str = ""
     result: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ArtifactInfo(BaseModel):
+    """Artifact metadata for list/detail responses."""
+
+    task: TaskType
+    artifact_id: str
+    model_name: str
+    signature: str
+    data_version: str
+    updated_at: str
+    artifact_file_path: str
+    metadata_file_path: str
+
+
+class ArtifactListResponse(BaseModel):
+    """Response for artifact listing endpoint."""
+
+    artifacts: List[ArtifactInfo] = Field(default_factory=list)
+
+
+class ArtifactDetailResponse(ArtifactInfo):
+    """Detailed artifact metadata including feature references."""
+
+    feature_names: List[str] = Field(default_factory=list)
+    reference_stats: Dict[str, Any] = Field(default_factory=dict)
+    result_payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ArtifactPredictRequest(BaseModel):
+    """Inference request against a persisted artifact."""
+
+    records: List[Dict[str, Any]] = Field(min_length=1)
+
+
+class ArtifactPredictResponse(BaseModel):
+    """Inference response for a persisted artifact."""
+
+    task: TaskType
+    artifact_id: str
+    n_records: int
+    predictions: List[str] = Field(default_factory=list)
+    probabilities: List[Dict[str, float]] = Field(default_factory=list)
+
+
+class ArtifactDriftRequest(BaseModel):
+    """Drift check request against artifact reference data."""
+
+    records: List[Dict[str, Any]] = Field(min_length=1)
+
+
+class ArtifactDriftFeatureReport(BaseModel):
+    """One feature drift report entry."""
+
+    feature: str
+    type: Literal["numeric", "categorical"]
+    score: float
+    flagged: bool
+    reference_mean: Optional[float] = None
+    current_mean: Optional[float] = None
+    metric: str = ""
+
+
+class ArtifactDriftResponse(BaseModel):
+    """Drift check response for an artifact."""
+
+    task: TaskType
+    artifact_id: str
+    n_records: int
+    overall_drift_score: float
+    flagged_feature_count: int
+    is_drifted: bool
+    feature_reports: List[ArtifactDriftFeatureReport] = Field(default_factory=list)
 
 
 class ModelComparisonResponse(BaseModel):

@@ -7,10 +7,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
 import traceback
-from typing import Any, Callable, Dict, List, Literal, Optional, Protocol
+from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Tuple
 import uuid
 
-JobStatus = Literal["pending", "running", "completed", "failed"]
+JobStatus = Literal["pending", "running", "cancel_requested", "canceled", "completed", "failed"]
 CustomLearningHandler = Callable[..., Dict[str, Any]]
 
 
@@ -44,23 +44,29 @@ class JobRecord:
 
 
 class _JobBackend(Protocol):
-    def submit_custom_learning(self, payload: Dict[str, Any]) -> JobRecord:
-        ...
+    def submit_custom_learning(self, payload: Dict[str, Any]) -> JobRecord: ...
 
-    def get(self, job_id: str) -> Optional[JobRecord]:
-        ...
+    def get(self, job_id: str) -> Optional[JobRecord]: ...
+
+    def cancel(
+        self,
+        job_id: str,
+    ) -> Tuple[bool, Literal["cancel_requested", "canceled", "completed", "failed", "not_found"]]: ...
 
 
 class _LocalJobBackend:
     """Thread-backed local job execution backend."""
 
-    def __init__(self, custom_learning_handler: CustomLearningHandler, max_workers: int, max_retained_jobs: int) -> None:
+    def __init__(
+        self, custom_learning_handler: CustomLearningHandler, max_workers: int, max_retained_jobs: int
+    ) -> None:
         self._custom_learning_handler = custom_learning_handler
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="abax-job")
         self._max_retained_jobs = max_retained_jobs
         self._lock = Lock()
         self._jobs: Dict[str, JobRecord] = {}
         self._order: List[str] = []
+        self._cancel_requested: Dict[str, bool] = {}
 
     def submit_custom_learning(self, payload: Dict[str, Any]) -> JobRecord:
         job_id = str(uuid.uuid4())
@@ -79,6 +85,9 @@ class _LocalJobBackend:
             record = self._jobs.get(job_id)
             if record is None:
                 return
+            if record.status == "canceled":
+                record.finished_at = _utc_now()
+                return
             record.status = "running"
             record.started_at = _utc_now()
 
@@ -87,6 +96,12 @@ class _LocalJobBackend:
             with self._lock:
                 record = self._jobs.get(job_id)
                 if record is None:
+                    return
+                if self._cancel_requested.get(job_id, False):
+                    record.result = None
+                    record.status = "canceled"
+                    record.finished_at = _utc_now()
+                    record.error = "Canceled by user while running."
                     return
                 record.result = result
                 record.status = "completed"
@@ -103,6 +118,39 @@ class _LocalJobBackend:
     def get(self, job_id: str) -> Optional[JobRecord]:
         with self._lock:
             return self._jobs.get(job_id)
+
+    def cancel(
+        self,
+        job_id: str,
+    ) -> Tuple[bool, Literal["cancel_requested", "canceled", "completed", "failed", "not_found"]]:
+        with self._lock:
+            record = self._jobs.get(job_id)
+            if record is None:
+                return False, "not_found"
+
+            if record.status == "pending":
+                record.status = "canceled"
+                record.finished_at = _utc_now()
+                record.error = "Canceled by user before execution."
+                return True, "canceled"
+
+            if record.status == "running":
+                record.status = "cancel_requested"
+                self._cancel_requested[job_id] = True
+                return True, "cancel_requested"
+
+            if record.status == "cancel_requested":
+                return True, "cancel_requested"
+
+            if record.status == "canceled":
+                return True, "canceled"
+
+            if record.status == "completed":
+                return True, "completed"
+            if record.status == "failed":
+                return True, "failed"
+
+            return False, "not_found"
 
     def _trim_locked(self) -> None:
         if len(self._order) <= self._max_retained_jobs:
@@ -122,8 +170,9 @@ class _LocalJobBackend:
                 removed += 1
                 continue
 
-            if record.status in {"completed", "failed"}:
+            if record.status in {"completed", "failed", "canceled"}:
                 self._jobs.pop(job_id, None)
+                self._cancel_requested.pop(job_id, None)
                 removed += 1
             else:
                 kept_order.append(job_id)
@@ -134,7 +183,17 @@ class _LocalJobBackend:
 class _CeleryJobBackend:
     """Celery-backed backend using Redis/Rabbit broker and result backend."""
 
-    def __init__(self, broker_url: str, result_backend: str) -> None:
+    def __init__(
+        self,
+        broker_url: str,
+        result_backend: str,
+        *,
+        max_retries: int,
+        retry_backoff: bool,
+        retry_backoff_max: int,
+        soft_time_limit_seconds: int,
+        time_limit_seconds: int,
+    ) -> None:
         try:
             from celery import Celery  # type: ignore
             from celery.result import AsyncResult  # type: ignore
@@ -144,15 +203,29 @@ class _CeleryJobBackend:
                 "Install celery and redis extras or use ABAX_ASYNC_JOB_BACKEND=local."
             ) from exc
 
-        self._celery_cls = Celery
         self._async_result_cls = AsyncResult
         self._app = Celery("abax-api-client", broker=broker_url, backend=result_backend)
         self._task_name = "src.api.celery_tasks.run_custom_learning_task"
+        self._max_retries = max_retries
+        self._retry_backoff = retry_backoff
+        self._retry_backoff_max = retry_backoff_max
+        self._soft_time_limit_seconds = soft_time_limit_seconds
+        self._time_limit_seconds = time_limit_seconds
         self._lock = Lock()
         self._submitted: Dict[str, JobRecord] = {}
 
     def submit_custom_learning(self, payload: Dict[str, Any]) -> JobRecord:
-        async_result = self._app.send_task(self._task_name, kwargs={"payload": payload})
+        runtime_policy = {
+            "max_retries": self._max_retries,
+            "retry_backoff": self._retry_backoff,
+            "retry_backoff_max": self._retry_backoff_max,
+        }
+        async_result = self._app.send_task(
+            self._task_name,
+            kwargs={"payload": payload, "runtime_policy": runtime_policy},
+            soft_time_limit=self._soft_time_limit_seconds,
+            time_limit=self._time_limit_seconds,
+        )
         record = JobRecord(job_id=str(async_result.id), status="pending")
         with self._lock:
             self._submitted[record.job_id] = record
@@ -183,6 +256,12 @@ class _CeleryJobBackend:
             payload.finished_at = _utc_now()
             payload.result = async_result.result
             return payload
+        if state == "REVOKED":
+            payload.status = "canceled"
+            payload.started_at = seed.started_at
+            payload.finished_at = _utc_now()
+            payload.error = "Canceled by user."
+            return payload
         if state == "FAILURE":
             payload.status = "failed"
             payload.started_at = seed.started_at
@@ -192,6 +271,23 @@ class _CeleryJobBackend:
 
         payload.status = "pending"
         return payload
+
+    def cancel(
+        self,
+        job_id: str,
+    ) -> Tuple[bool, Literal["cancel_requested", "canceled", "completed", "failed", "not_found"]]:
+        with self._lock:
+            seed = self._submitted.get(job_id)
+            if seed is None:
+                return False, "not_found"
+            if seed.status == "completed":
+                return True, "completed"
+            if seed.status == "failed":
+                return True, "failed"
+            seed.status = "cancel_requested"
+
+        self._app.control.revoke(job_id, terminate=True, signal="SIGTERM")
+        return True, "cancel_requested"
 
 
 class JobManager:
@@ -206,11 +302,21 @@ class JobManager:
         max_retained_jobs: int = 300,
         celery_broker_url: str = "redis://redis:6379/0",
         celery_result_backend: str = "redis://redis:6379/1",
+        celery_task_max_retries: int = 3,
+        celery_retry_backoff: bool = True,
+        celery_retry_backoff_max: int = 60,
+        celery_soft_time_limit_seconds: int = 240,
+        celery_time_limit_seconds: int = 300,
     ) -> None:
         if backend == "celery":
             self._backend: _JobBackend = _CeleryJobBackend(
                 broker_url=celery_broker_url,
                 result_backend=celery_result_backend,
+                max_retries=celery_task_max_retries,
+                retry_backoff=celery_retry_backoff,
+                retry_backoff_max=celery_retry_backoff_max,
+                soft_time_limit_seconds=celery_soft_time_limit_seconds,
+                time_limit_seconds=celery_time_limit_seconds,
             )
         else:
             self._backend = _LocalJobBackend(
@@ -226,3 +332,10 @@ class JobManager:
     def get(self, job_id: str) -> Optional[JobRecord]:
         """Get job status/result by id."""
         return self._backend.get(job_id)
+
+    def cancel(
+        self,
+        job_id: str,
+    ) -> Tuple[bool, Literal["cancel_requested", "canceled", "completed", "failed", "not_found"]]:
+        """Cancel one job (best effort depending on backend)."""
+        return self._backend.cancel(job_id)

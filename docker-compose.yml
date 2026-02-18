@@ -11,6 +11,7 @@ services:
       ABAX_TEST_SIZE: "0.2"
       ABAX_RANDOM_STATE: "42"
       ABAX_CLASSIFICATION_CACHE_CSV: "/tmp/uah_raw_features.parquet"
+      ABAX_DATABASE_URL: "postgresql+psycopg://abax:abax@postgres:5432/abax"
       ABAX_ASYNC_JOB_BACKEND: "celery"
       ABAX_CELERY_BROKER_URL: "redis://redis:6379/0"
       ABAX_CELERY_RESULT_BACKEND: "redis://redis:6379/1"
@@ -18,7 +19,10 @@ services:
       - ./data:/app/data:ro
       - ./results:/app/results
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
@@ -38,16 +42,41 @@ services:
       ABAX_TEST_SIZE: "0.2"
       ABAX_RANDOM_STATE: "42"
       ABAX_CLASSIFICATION_CACHE_CSV: "/tmp/uah_raw_features.parquet"
+      ABAX_DATABASE_URL: "postgresql+psycopg://abax:abax@postgres:5432/abax"
       ABAX_CELERY_BROKER_URL: "redis://redis:6379/0"
       ABAX_CELERY_RESULT_BACKEND: "redis://redis:6379/1"
     volumes:
       - ./data:/app/data:ro
       - ./results:/app/results
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: abax-redis
     restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: abax-postgres
+    environment:
+      POSTGRES_DB: abax
+      POSTGRES_USER: abax
+      POSTGRES_PASSWORD: abax
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abax -d abax"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

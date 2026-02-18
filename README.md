@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Driver Behavior Classification & Fuel Economy Prediction</strong><br>
-  <em>Complete Machine Learning Pipeline from Raw Sensors to Production Models</em>
+  <em>Complete ML pipeline with FastAPI + AngularJS Learning Studio, async jobs, and persistent run history</em>
 </p>
 
 ---
@@ -47,6 +47,32 @@ This project demonstrates end-to-end machine learning workflows for two telemati
 
 ---
 
+## 🆕 New Developments
+
+- **Strict data validation with Pydantic** across ingestion, feature extraction, API contracts, and runtime payloads.
+- **Learning Studio upgrade** with feature-subset training, full model list exposure, cross-validation mode, and train/validation diagnostics.
+- **Train/validation diagnostics in UI**:
+  - Classification: train + validation confusion matrices and per-iteration error curves.
+  - Regression: validation residual diagnostics and per-iteration error curves.
+- **Feature intelligence in UI**: per-feature explanation, source type (`raw` vs `processed`), and lineage text.
+- **Signature-based training cache** for repeated runs (`task + model + sorted_features + params + data_version`).
+- **Persistent run history** in SQLite with run metadata, cache-hit tracking, artifact info, and payload retrieval.
+- **Database-backed storage with migrations** for SQLite/PostgreSQL, auto-applied on service startup.
+- **Async training jobs** with pluggable backend:
+  - Local threaded job manager (default lightweight mode).
+  - Celery + Redis mode (docker compose stack).
+  - Retry/backoff policies and job cancellation endpoint.
+- **Full artifact lifecycle**:
+  - Persist trained model + preprocessing bundle (`joblib`)
+  - Serve predictions from artifact endpoints
+  - Run drift checks against artifact training references
+- **Parquet-first dataset caching** with metadata sidecars (`.meta.json`) for schema/version/column tracking.
+- **Data version manifest support** and API exposure for reproducibility checks.
+- **Observability endpoint** for request and training timing metrics.
+- **Quality gates** expanded with pre-commit + CI checks (`ruff`, `mypy`, `pytest`, docker build).
+
+---
+
 ## 🏆 Key Achievements
 
 | Achievement | Description |
@@ -57,6 +83,9 @@ This project demonstrates end-to-end machine learning workflows for two telemati
 | **18 Classification Models** | Including MCP, SCAD, MLP, SVM, Random Forest, KNN |
 | **Advanced Regularization** | Implemented MCP and SCAD for nearly unbiased sparse estimates |
 | **MLP Neural Network** | Multi-Layer Perceptron with proper StandardScaler normalization |
+| **Persistent Run Cache** | Signature-based cache + SQLite run history for repeatable UI runs |
+| **Async Training Jobs** | Background training with local backend and optional Celery/Redis |
+| **Observability** | Request/training timing metrics exposed from API |
 | **Clean Code Architecture** | Modular `src/` package with testable, reusable functions |
 | **Comprehensive Analysis** | Feature importance, failure cases, production recommendations |
 
@@ -119,15 +148,25 @@ jupyter lab notebooks/
 pytest tests/ -v
 ```
 
-### 4. Run API + AngularJS Dashboard
+### 4. Run Quality Checks
+
+```bash
+ruff check .
+mypy src tests
+pytest -q
+pre-commit run --all-files
+```
+
+### 5. Run API + AngularJS Dashboard (Local)
 
 ```bash
 uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+This uses the local in-process async backend.
 Open `http://localhost:8000` for the dashboard.
 
-### 5. Run with Docker (Standalone)
+### 6. Run with Docker (API + Redis + Celery Worker)
 
 ```bash
 docker compose up --build
@@ -136,7 +175,18 @@ docker compose up --build
 This starts API + UI + Redis + Celery worker (async training jobs).
 Open `http://localhost:8000` for the dashboard.
 
-### 6. Compile LaTeX Report
+### 7. Apply Database Migrations (Manual)
+
+```bash
+python scripts/migrate_database.py
+```
+
+You can switch to PostgreSQL by setting:
+```bash
+export ABAX_DATABASE_URL="postgresql+psycopg://abax:abax@localhost:5432/abax"
+```
+
+### 8. Compile LaTeX Report
 
 ```bash
 cd docs && bash compile_report.sh
@@ -149,6 +199,7 @@ cd docs && bash compile_report.sh
 Task-aware endpoints (`task=classification|regression`):
 
 - `GET /api/health` - service readiness for both tasks
+- `GET /api/data/version` - dataset version hashes for reproducibility
 - `GET /api/metadata` - dataset/feature/model metadata for selected task
 - `GET /api/features` - feature list with numeric flags and descriptions
 - `GET /api/models` - selectable models for selected task
@@ -160,8 +211,13 @@ Task-aware endpoints (`task=classification|regression`):
 - `POST /api/model/custom-learning` - feature-subset learning (sync)
 - `POST /api/model/custom-learning/job` - feature-subset learning (async job)
 - `GET /api/jobs/{job_id}` - async job polling
+- `POST /api/jobs/{job_id}/cancel` - async job cancellation
 - `GET /api/training-runs` - persisted run history
 - `GET /api/training-runs/{run_id}` - one run details with cached payload
+- `GET /api/artifacts` - list persisted model artifacts
+- `GET /api/artifacts/{task}/{artifact_id}` - artifact metadata/details
+- `POST /api/artifacts/{task}/{artifact_id}/predict` - batch inference from artifact
+- `POST /api/artifacts/{task}/{artifact_id}/drift` - drift checks vs artifact reference stats
 - `GET /api/model/compare` - all-model benchmark for selected task
 - `GET /api/observability/metrics` - in-process request/training metrics snapshot
 
@@ -184,7 +240,8 @@ ABAX/
 │
 ├── 📊 results/                       # Outputs
 │   ├── results.json                  # Model metrics
-│   └── figures/                      # 14 report visualizations
+│   ├── figures/                      # Report visualizations
+│   └── model_artifacts/              # Saved model run payload artifacts
 │
 ├── 🔧 src/                           # Production-ready code
 │   ├── classification/               # Classification module
@@ -205,19 +262,28 @@ ABAX/
 │   │   ├── app.py                    # API routes
 │   │   ├── schemas.py                # Pydantic request/response contracts
 │   │   ├── services.py               # Task-aware analytics services
+│   │   ├── run_repository.py         # SQLite-backed run/cache persistence
+│   │   ├── job_manager.py            # Local/Celery async job backend facade
+│   │   ├── celery_tasks.py           # Celery worker task entrypoints
+│   │   ├── observability.py          # Request/training metrics registry
 │   │   └── static/                   # AngularJS module/service/controller + CSS
 │   ├── data/                         # Data loaders
+│   │   ├── cache_io.py               # CSV/Parquet cache read/write + metadata
+│   │   └── versioning.py             # Dataset version hashing/manifest
 │   └── utils/                        # Utilities
 │
 ├── 🧪 tests/                         # Unit tests
 │
 ├── 📦 data/                          # Datasets
-│   ├── processed/                    # Cached feature CSVs
+│   ├── processed/                    # Cached Parquet features + metadata sidecars
 │   └── UAH-DRIVESET-v1/              # Raw driving data
 │
 ├── scripts/                          # Utility scripts
-│   └── generate_notebook_figures.py  # Figure generation
+│   ├── generate_notebook_figures.py  # Figure generation
+│   ├── generate_data_manifest.py     # Reproducibility manifest generation
+│   └── migrate_database.py           # Apply DB migrations manually
 │
+├── .pre-commit-config.yaml           # Local quality hooks
 └── pyproject.toml                    # Dependencies
 ```
 
@@ -225,7 +291,7 @@ ABAX/
 
 ## 🔬 Technical Details
 
-### Feature Engineering (24 Raw Sensor Features)
+### Feature Engineering (Validated Raw + Processed Features)
 
 | Category | Features | Physical Meaning |
 |----------|----------|------------------|
@@ -234,7 +300,7 @@ ABAX/
 | Course/Heading | change_mean, std, max | Lane changes, turns |
 | Acceleration | X/Y axis mean, std | Core behavior signal |
 | Jerk | x_std, y_std | **Smoothness indicator** |
-| Event Counts | brake, turn, hard events | Discrete summaries |
+| Event Counts | brake, accel, turn, sharp-turn counts/rates | Discrete maneuver summaries |
 
 **Why Jerk Matters:** Jerk = d(acceleration)/dt. Aggressive drivers have high jerk variance because they brake suddenly, accelerate abruptly, and make sharp steering corrections.
 
@@ -316,8 +382,13 @@ All figures are in `results/figures/`:
 | Category | Technologies |
 |----------|--------------|
 | **Core** | Python 3.11, NumPy, Pandas, Scikit-learn |
+| **API** | FastAPI, Pydantic v2, Uvicorn |
+| **UI (MVC)** | AngularJS 1.8 (module/service/controller), HTML/CSS |
+| **Async Jobs** | Local thread backend, Celery 5 + Redis 7 |
+| **Persistence** | SQLite/PostgreSQL run store, joblib model artifacts, Parquet caches |
 | **Deep Learning** | PyTorch 2.x |
 | **Visualization** | Matplotlib, Seaborn |
+| **Quality** | Ruff, MyPy, Pytest, pre-commit, GitHub Actions |
 | **Report** | LaTeX (tectonic compiler) |
 | **Package Management** | uv |
 
@@ -333,6 +404,22 @@ Select the **ABAX (.venv)** kernel in JupyterLab for correct dependencies.
 rm uv.lock && uv sync
 ```
 
+### Docker Compose Startup Notes
+
+- `docker compose up --build` starts `abax-app`, `abax-worker`, and `redis`.
+- If you previously saw `Read-only file system` errors for cache writes, ensure cache paths point to writable locations (current compose config already does this).
+
+### Worker Health Check
+```bash
+docker compose ps
+docker compose logs -f abax-worker
+```
+
+### Containerized E2E Smoke
+```bash
+ABAX_RUN_DOCKER_E2E=1 pytest -q tests/test_containerized_e2e.py
+```
+
 ### Compile Report
 ```bash
 # Requires tectonic or pdflatex
@@ -344,17 +431,25 @@ cd docs && bash compile_report.sh
 ## ✅ Deliverables Checklist
 
 - [x] **Technical Report** - Comprehensive PDF (20+ pages)
-- [x] **Classification** - 18 models, 87.5% accuracy
-- [x] **Regression** - 13 models, R² = 0.94
+- [x] **Classification Models in UI** - Full available model registry exposed
+- [x] **Regression Modeling** - End-to-end diagnostics and model comparison
 - [x] **Driver-Level Splitting** - D6 held out
-- [x] **Raw Sensor Features** - 36 features, no circular logic
+- [x] **Feature Intelligence** - Source type (`raw`/`processed`) + lineage in UI
+- [x] **Custom Learning Studio** - Feature subset selection + model selection + CV mode
+- [x] **Train/Validation Curves** - Per-iteration error history in diagnostics and custom learning
+- [x] **Train/Validation Matrices** - Classification confusion matrices for both splits
 - [x] **Advanced Regularization** - MCP, SCAD implemented
-- [x] **Neural Network** - PyTorch with proper normalization
-- [x] **Failure Analysis** - Misclassification cases documented
-- [x] **Production Recommendations** - Deployment guidance
-- [x] **Clean Code** - Modular `src/` architecture
-- [x] **Visualizations** - 30+ professional figures
-- [x] **Tests** - Unit tests passing
+- [x] **Persistent Training Cache** - Signature-based caching with run persistence
+- [x] **Async Training Execution** - Job queue + polling API + Celery/Redis option
+- [x] **PostgreSQL Migration Path** - DB URL-based backend with startup migrations
+- [x] **Job Cancellation + Retry Policies** - cancel endpoint and retry/backoff controls
+- [x] **Artifact Serving Lifecycle** - persist/load/predict flows from trained artifacts
+- [x] **Drift Monitoring** - artifact-level drift scoring on incoming batches
+- [x] **Containerized E2E Test** - docker compose smoke covering API + worker + datastore
+- [x] **Observability** - Request and training timing metrics endpoint
+- [x] **Data Caching/Versioning** - Parquet caches with metadata + version manifest
+- [x] **Clean Architecture** - Modular codebase with Pydantic-first contracts
+- [x] **Tests** - API/data/schema/UI-flow tests passing
 
 ---
 

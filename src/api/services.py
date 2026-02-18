@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import copy
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import hashlib
 import io
 import json
@@ -15,6 +16,8 @@ from threading import Lock
 import time
 from typing import Any, Dict, List, Optional, Tuple
 import warnings
+
+import joblib
 
 # Avoid oversubscription/deadlocks from mixed OpenMP runtimes in containerized environments.
 os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -39,7 +42,7 @@ from src.data.sample_models import ClassificationTripSample, EPAVehicleSample
 from src.data.splitter import split_by_driver
 from src.data.validation import validate_dataframe_records
 from src.features.analysis import analyze_correlations, compute_feature_statistics
-from src.features.preprocessing import engineer_regression_features, preprocess_features
+from src.features.preprocessing import FeaturePreprocessor, engineer_regression_features, preprocess_features
 from src.models.evaluation import evaluate_classifier, evaluate_regressor
 from src.models.trainer import train_model
 from src.visualization.plots import (
@@ -55,6 +58,10 @@ warnings.filterwarnings("ignore", message=".*Intel OpenMP.*", category=RuntimeWa
 
 REMOVED_CLASSIFICATION_COLUMNS = {"hard_brake_count", "hard_break_count"}
 REGRESSION_CACHE_SCHEMA_VERSION = "1.0.0"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(tz=timezone.utc).isoformat()
 
 
 @dataclass
@@ -93,8 +100,7 @@ class AnalyticsService:
             "regression": self._load_regression_runtime(),
         }
         self._runtime_data_versions = {
-            task: self._build_runtime_data_version(runtime)
-            for task, runtime in self.runtimes.items()
+            task: self._build_runtime_data_version(runtime) for task, runtime in self.runtimes.items()
         }
 
         self._training_cache_enabled = bool(self.settings.training_cache_enabled)
@@ -102,7 +108,10 @@ class AnalyticsService:
         self._training_cache: Dict[str, Any] = {}
         self._training_cache_order: List[str] = []
         self._training_cache_lock = Lock()
-        self.run_repository = TrainingRunRepository(self.settings.resolve_path(self.settings.run_store_path))
+        self.run_repository = TrainingRunRepository(
+            self.settings.database_url,
+            project_root=self.settings.resolve_path("."),
+        )
         self.observability: Optional[ObservabilityRegistry] = None
 
     def set_observability(self, registry: ObservabilityRegistry) -> None:
@@ -424,25 +433,113 @@ class AnalyticsService:
         )
 
     def _artifact_dir(self) -> Path:
-        return self.settings.resolve_path("results/model_artifacts")
+        return self.settings.resolve_path(self.settings.artifact_dir)
 
-    def _artifact_file(self, task: TaskType, artifact_id: str) -> Path:
+    def _artifact_bundle_file(self, task: TaskType, artifact_id: str) -> Path:
+        return self._artifact_dir() / f"{task}-{artifact_id}.joblib"
+
+    def _artifact_metadata_file(self, task: TaskType, artifact_id: str) -> Path:
         return self._artifact_dir() / f"{task}-{artifact_id}.json"
 
-    def _persist_artifact_payload(self, task: TaskType, artifact_id: str, payload: Dict[str, Any]) -> str:
-        artifact_path = self._artifact_file(task, artifact_id)
-        artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        return str(artifact_path)
+    def _compute_reference_stats(self, frame: pd.DataFrame, feature_names: List[str]) -> Dict[str, Any]:
+        """Build training reference statistics for drift checks."""
+        reference: Dict[str, Any] = {"numeric": {}, "categorical": {}}
+        subset = frame[feature_names].copy()
+
+        for feature in feature_names:
+            series = subset[feature]
+            if pd.api.types.is_numeric_dtype(series):
+                numeric = pd.to_numeric(series, errors="coerce")
+                mean = float(np.nanmean(numeric)) if len(numeric) else 0.0
+                std = float(np.nanstd(numeric)) if len(numeric) else 0.0
+                reference["numeric"][feature] = {
+                    "mean": mean,
+                    "std": std,
+                    "p05": float(np.nanpercentile(numeric, 5)) if len(numeric) else 0.0,
+                    "p50": float(np.nanpercentile(numeric, 50)) if len(numeric) else 0.0,
+                    "p95": float(np.nanpercentile(numeric, 95)) if len(numeric) else 0.0,
+                }
+            else:
+                value_counts = series.astype(str).fillna("N/A").value_counts(normalize=True).head(20)
+                reference["categorical"][feature] = {str(k): float(v) for k, v in value_counts.items()}
+        return reference
+
+    def _persist_artifact_bundle(
+        self,
+        *,
+        task: TaskType,
+        model_name: str,
+        artifact_id: str,
+        signature: str,
+        data_version: str,
+        bundle: Dict[str, Any],
+        result_payload: Dict[str, Any],
+    ) -> Tuple[str, str]:
+        """Persist artifact bundle (joblib) plus metadata (json + DB record)."""
+        artifact_dir = self._artifact_dir()
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+
+        artifact_file = self._artifact_bundle_file(task, artifact_id)
+        metadata_file = self._artifact_metadata_file(task, artifact_id)
+        reference_stats = bundle.get("reference_stats", {})
+        feature_names = [str(name) for name in bundle.get("feature_names", [])]
+
+        joblib.dump(bundle, artifact_file)
+
+        metadata_payload = {
+            "artifact_id": artifact_id,
+            "task": task,
+            "model_name": model_name,
+            "signature": signature,
+            "data_version": data_version,
+            "feature_names": feature_names,
+            "artifact_file": str(artifact_file),
+            "reference_stats": reference_stats,
+            "saved_at": _utc_now_iso(),
+        }
+        metadata_file.write_text(json.dumps(metadata_payload, indent=2), encoding="utf-8")
+
+        self.run_repository.upsert_model_artifact(
+            task=task,
+            artifact_id=artifact_id,
+            model_name=model_name,
+            signature=signature,
+            data_version=data_version,
+            feature_names=feature_names,
+            reference_stats=reference_stats,
+            artifact_file_path=str(artifact_file),
+            metadata_file_path=str(metadata_file),
+            result_payload=result_payload,
+        )
+        return str(artifact_file), str(metadata_file)
 
     def _load_artifact_payload(self, task: TaskType, artifact_id: str) -> Dict[str, Any]:
-        artifact_path = self._artifact_file(task, artifact_id)
-        if not artifact_path.exists():
+        record = self.run_repository.get_model_artifact(task=task, artifact_id=artifact_id)
+        if record is not None:
+            return record.get("result_payload", {})
+
+        # Backward compatibility for legacy JSON artifacts.
+        legacy_file = self._artifact_metadata_file(task, artifact_id)
+        if not legacy_file.exists():
             raise ValueError(f"Artifact '{artifact_id}' not found for task '{task}'.")
-        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
+        payload = json.loads(legacy_file.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            if isinstance(payload.get("result_payload"), dict):
+                return payload["result_payload"]
+            return payload
+        raise ValueError(f"Artifact '{artifact_id}' is invalid.")
+
+    def _load_artifact_bundle(self, task: TaskType, artifact_id: str) -> Dict[str, Any]:
+        record = self.run_repository.get_model_artifact(task=task, artifact_id=artifact_id)
+        if record is None:
+            raise ValueError(f"Artifact '{artifact_id}' not found for task '{task}'.")
+        artifact_file = Path(str(record["artifact_file_path"]))
+        if not artifact_file.exists():
+            raise ValueError(f"Artifact file for '{artifact_id}' not found at {artifact_file}.")
+        bundle = joblib.load(artifact_file)
+        if not isinstance(bundle, dict):
             raise ValueError(f"Artifact '{artifact_id}' is invalid.")
-        return payload
+        return bundle
 
     @staticmethod
     def _feature_source_summary(task: TaskType, source_type: str) -> str:
@@ -487,6 +584,162 @@ class AnalyticsService:
             "features": self.list_feature_payload(task),
             "models": runtime.catalog.models,
             "model_details": self.list_model_payload(task),
+        }
+
+    def list_artifacts(self, task: Optional[TaskType], limit: int = 30) -> List[Dict[str, Any]]:
+        """List persisted model artifacts available for serving."""
+        safe_limit = max(1, min(int(limit), 200))
+        return self.run_repository.list_model_artifacts(task=task, limit=safe_limit)
+
+    def get_artifact(self, task: TaskType, artifact_id: str) -> Dict[str, Any]:
+        """Get one persisted artifact metadata payload."""
+        record = self.run_repository.get_model_artifact(task=task, artifact_id=artifact_id)
+        if record is None:
+            raise ValueError(f"Artifact '{artifact_id}' not found for task '{task}'.")
+        return record
+
+    @staticmethod
+    def _prepare_artifact_records(
+        bundle: Dict[str, Any],
+        records: List[Dict[str, Any]],
+    ) -> pd.DataFrame:
+        """Prepare inference/drift dataframe to match artifact feature contract."""
+        feature_names = [str(name) for name in bundle.get("feature_names", [])]
+        if not feature_names:
+            raise ValueError("Artifact is missing feature definitions.")
+
+        numeric_features = set(str(name) for name in bundle.get("numeric_features", []))
+        feature_medians = bundle.get("feature_medians", {})
+        frame = pd.DataFrame(records)
+
+        for feature in feature_names:
+            if feature not in frame.columns:
+                frame[feature] = np.nan
+
+        frame = frame[feature_names].copy()
+        for feature in feature_names:
+            if feature in numeric_features:
+                frame[feature] = pd.to_numeric(frame[feature], errors="coerce")
+                median = feature_medians.get(feature)
+                median_value = float(median) if median is not None else float(frame[feature].median())
+                frame[feature] = frame[feature].fillna(median_value)
+            else:
+                frame[feature] = frame[feature].fillna("").astype(str)
+        return frame
+
+    def predict_with_artifact(
+        self,
+        task: TaskType,
+        artifact_id: str,
+        records: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Run serving inference against a persisted artifact bundle."""
+        if not records:
+            raise ValueError("At least one record is required for prediction.")
+
+        bundle = self._load_artifact_bundle(task, artifact_id)
+        frame = self._prepare_artifact_records(bundle, records)
+
+        preprocessor = bundle.get("preprocessor")
+        model = bundle.get("model")
+        if model is None:
+            raise ValueError(f"Artifact '{artifact_id}' is missing trained model.")
+
+        if preprocessor is None:
+            X = frame.to_numpy()
+        else:
+            X = preprocessor.transform(frame)
+
+        raw_predictions = model.predict(X)
+        predictions = [str(pred) for pred in raw_predictions.tolist()]
+
+        probabilities: List[Dict[str, float]] = []
+        class_names = [str(name) for name in bundle.get("class_names", [])]
+        if task == "classification" and hasattr(model, "predict_proba"):
+            probs = model.predict_proba(X)
+            if probs.ndim == 2:
+                for row in probs:
+                    if class_names and len(class_names) == row.shape[0]:
+                        payload = {label: round(float(value), 6) for label, value in zip(class_names, row)}
+                    else:
+                        payload = {str(idx): round(float(value), 6) for idx, value in enumerate(row.tolist())}
+                    probabilities.append(payload)
+
+        return {
+            "task": task,
+            "artifact_id": artifact_id,
+            "n_records": len(frame),
+            "predictions": predictions,
+            "probabilities": probabilities,
+        }
+
+    def detect_artifact_drift(
+        self,
+        task: TaskType,
+        artifact_id: str,
+        records: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Detect simple numeric/categorical drift against artifact training reference."""
+        if not records:
+            raise ValueError("At least one record is required for drift detection.")
+
+        bundle = self._load_artifact_bundle(task, artifact_id)
+        reference_stats = bundle.get("reference_stats", {})
+        frame = self._prepare_artifact_records(bundle, records)
+
+        feature_reports: List[Dict[str, Any]] = []
+        drift_scores: List[float] = []
+
+        numeric_reference = reference_stats.get("numeric", {})
+        for feature, ref in numeric_reference.items():
+            current = pd.to_numeric(frame[feature], errors="coerce")
+            current_mean = float(np.nanmean(current)) if len(current) else 0.0
+            ref_mean = float(ref.get("mean", 0.0))
+            ref_std = abs(float(ref.get("std", 0.0)))
+            score = abs(current_mean - ref_mean) / (ref_std + 1e-6)
+            flagged = score >= 1.5
+            feature_reports.append(
+                {
+                    "feature": feature,
+                    "type": "numeric",
+                    "score": round(float(score), 6),
+                    "flagged": flagged,
+                    "reference_mean": round(ref_mean, 6),
+                    "current_mean": round(current_mean, 6),
+                }
+            )
+            drift_scores.append(float(score))
+
+        categorical_reference = reference_stats.get("categorical", {})
+        for feature, ref_dist in categorical_reference.items():
+            current_dist = frame[feature].astype(str).value_counts(normalize=True).to_dict()
+            categories = set(ref_dist.keys()) | set(current_dist.keys())
+            tvd = 0.5 * sum(
+                abs(float(ref_dist.get(cat, 0.0)) - float(current_dist.get(cat, 0.0))) for cat in categories
+            )
+            flagged = tvd >= 0.2
+            feature_reports.append(
+                {
+                    "feature": feature,
+                    "type": "categorical",
+                    "score": round(float(tvd), 6),
+                    "flagged": flagged,
+                    "metric": "total_variation_distance",
+                }
+            )
+            drift_scores.append(float(tvd))
+
+        overall_score = float(np.mean(drift_scores)) if drift_scores else 0.0
+        flagged_count = sum(1 for item in feature_reports if bool(item.get("flagged")))
+
+        return {
+            "task": task,
+            "artifact_id": artifact_id,
+            "n_records": int(len(frame)),
+            "overall_drift_score": round(overall_score, 6),
+            "flagged_feature_count": int(flagged_count),
+            "feature_reports": feature_reports,
+            "is_drifted": overall_score >= 1.0 or flagged_count > 0,
         }
 
     def analyze_feature(self, task: TaskType, feature_name: str) -> Tuple[Dict[str, float], str, str, Dict[str, Any]]:
@@ -755,6 +1008,48 @@ class AnalyticsService:
             class_names,
         )
 
+    def _build_classification_serving_bundle(self, model_name: str, feature_names: List[str]) -> Dict[str, Any]:
+        """Fit full-data classification serving bundle for artifact persistence."""
+        runtime = self._runtime("classification")
+        data = runtime.dataframe.copy()
+        X = data[feature_names].copy()
+        y = data["behavior"].astype(str).str.upper().copy()
+
+        numeric_features = [name for name in feature_names if pd.api.types.is_numeric_dtype(X[name])]
+        feature_medians: Dict[str, float] = {}
+        for name in numeric_features:
+            numeric = pd.to_numeric(X[name], errors="coerce")
+            median_value = float(numeric.median()) if not numeric.dropna().empty else 0.0
+            feature_medians[name] = median_value
+            X[name] = numeric.fillna(median_value)
+
+        for name in feature_names:
+            if name not in numeric_features:
+                X[name] = X[name].fillna("").astype(str)
+
+        preprocessor = FeaturePreprocessor(scaler_type="robust")
+        X_processed = preprocessor.fit_transform(X)
+        X_processed = np.nan_to_num(X_processed, nan=0.0)
+
+        model = self._build_model("classification", model_name)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            model.fit(X_processed, y)
+
+        class_names = sorted(y.unique().tolist())
+        return {
+            "task": "classification",
+            "model_name": model_name,
+            "feature_names": feature_names,
+            "numeric_features": numeric_features,
+            "feature_medians": feature_medians,
+            "class_names": class_names,
+            "reference_stats": self._compute_reference_stats(X, feature_names),
+            "preprocessor": preprocessor.preprocessor,
+            "model": model,
+            "created_at": _utc_now_iso(),
+        }
+
     @staticmethod
     def _classification_metrics_payload(metrics: ClassificationMetrics) -> Dict[str, float]:
         return {
@@ -917,6 +1212,7 @@ class AnalyticsService:
             f"Trained {model_name} using {len(unique_features)} selected feature(s). "
             f"Validation accuracy={validation_metrics.accuracy:.4f}, F1={validation_metrics.f1_score:.4f}."
         )
+        artifact_bundle = self._build_classification_serving_bundle(model_name, unique_features)
 
         return {
             "task": "classification",
@@ -933,6 +1229,7 @@ class AnalyticsService:
             "cv_scores": cv_scores,
             "cv_mean": cv_mean,
             "cv_std": cv_std,
+            "_artifact_bundle": artifact_bundle,
         }
 
     def _regression_split_for_features(
@@ -970,6 +1267,46 @@ class AnalyticsService:
             np.asarray(y_train),
             np.asarray(y_test),
         )
+
+    def _build_regression_serving_bundle(self, model_name: str, feature_names: List[str]) -> Dict[str, Any]:
+        """Fit full-data regression serving bundle for artifact persistence."""
+        runtime = self._runtime("regression")
+        data = runtime.dataframe.copy()
+        X = data[feature_names].copy()
+        y = data["comb08"].astype(float).copy()
+
+        numeric_features = [name for name in feature_names if pd.api.types.is_numeric_dtype(X[name])]
+        feature_medians: Dict[str, float] = {}
+        for name in numeric_features:
+            numeric = pd.to_numeric(X[name], errors="coerce")
+            median_value = float(numeric.median()) if not numeric.dropna().empty else 0.0
+            feature_medians[name] = median_value
+            X[name] = numeric.fillna(median_value)
+
+        for name in feature_names:
+            if name not in numeric_features:
+                X[name] = X[name].fillna("").astype(str)
+
+        preprocessor = FeaturePreprocessor(scaler_type="robust")
+        X_processed = preprocessor.fit_transform(X)
+        X_processed = np.nan_to_num(X_processed, nan=0.0)
+
+        model = self._build_model("regression", model_name)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            model.fit(X_processed, y)
+
+        return {
+            "task": "regression",
+            "model_name": model_name,
+            "feature_names": feature_names,
+            "numeric_features": numeric_features,
+            "feature_medians": feature_medians,
+            "reference_stats": self._compute_reference_stats(X, feature_names),
+            "preprocessor": preprocessor.preprocessor,
+            "model": model,
+            "created_at": _utc_now_iso(),
+        }
 
     def custom_regression_learning(
         self,
@@ -1048,6 +1385,7 @@ class AnalyticsService:
             f"Validation R2={validation_metrics.r2:.4f}, RMSE={validation_metrics.rmse:.4f}, "
             f"MAE={validation_metrics.mae:.4f}."
         )
+        artifact_bundle = self._build_regression_serving_bundle(model_name, unique_features)
 
         return {
             "task": "regression",
@@ -1063,6 +1401,7 @@ class AnalyticsService:
             "cv_scores": cv_scores,
             "cv_mean": cv_mean,
             "cv_std": cv_std,
+            "_artifact_bundle": artifact_bundle,
         }
 
     def custom_learning(
@@ -1105,10 +1444,11 @@ class AnalyticsService:
 
         try:
             if artifact_id:
+                record = self.run_repository.get_model_artifact(task=task, artifact_id=artifact_id)
                 payload = self._load_artifact_payload(task, artifact_id)
                 payload["artifact_id"] = artifact_id
                 payload["artifact_saved"] = True
-                payload["artifact_path"] = str(self._artifact_file(task, artifact_id))
+                payload["artifact_path"] = str(record["artifact_file_path"]) if record is not None else ""
                 duration_ms = (time.perf_counter() - start) * 1000.0
                 self.run_repository.complete_run(
                     run_id=run_id,
@@ -1137,6 +1477,38 @@ class AnalyticsService:
 
             cached = self._cache_get(signature)
             if cached is not None:
+                if persist_artifact and not bool(cached.get("artifact_saved")):
+                    cached_payload = copy.deepcopy(cached)
+                    if task == "classification":
+                        artifact_bundle = self._build_classification_serving_bundle(model_name, feature_names)
+                    else:
+                        artifact_bundle = self._build_regression_serving_bundle(model_name, feature_names)
+                    persisted_artifact_id = signature[:16]
+                    artifact_file_path, _ = self._persist_artifact_bundle(
+                        task=task,
+                        model_name=model_name,
+                        artifact_id=persisted_artifact_id,
+                        signature=signature,
+                        data_version=data_version,
+                        bundle=artifact_bundle,
+                        result_payload=cached_payload,
+                    )
+                    cached_payload["artifact_id"] = persisted_artifact_id
+                    cached_payload["artifact_saved"] = True
+                    cached_payload["artifact_path"] = artifact_file_path
+                    self._cache_set(signature, cached_payload)
+                    self.run_repository.set_cached_result(
+                        signature=signature,
+                        task=task,
+                        operation="custom_learning",
+                        model_name=model_name,
+                        feature_names=feature_names,
+                        params=params,
+                        data_version=data_version,
+                        result_payload=cached_payload,
+                    )
+                    cached = cached_payload
+
                 duration_ms = (time.perf_counter() - start) * 1000.0
                 self.run_repository.complete_run(
                     run_id=run_id,
@@ -1172,8 +1544,20 @@ class AnalyticsService:
                 payload.setdefault("artifact_path", "")
 
                 if persist_artifact and not payload.get("artifact_saved"):
+                    if task == "classification":
+                        artifact_bundle = self._build_classification_serving_bundle(model_name, feature_names)
+                    else:
+                        artifact_bundle = self._build_regression_serving_bundle(model_name, feature_names)
                     persisted_artifact_id = signature[:16]
-                    artifact_path = self._persist_artifact_payload(task, persisted_artifact_id, payload)
+                    artifact_path, _ = self._persist_artifact_bundle(
+                        task=task,
+                        model_name=model_name,
+                        artifact_id=persisted_artifact_id,
+                        signature=signature,
+                        data_version=data_version,
+                        bundle=artifact_bundle,
+                        result_payload=payload,
+                    )
                     payload["artifact_id"] = persisted_artifact_id
                     payload["artifact_saved"] = True
                     payload["artifact_path"] = artifact_path
@@ -1219,13 +1603,28 @@ class AnalyticsService:
                     cv_folds=cv_folds,
                 )
 
+            artifact_bundle = payload.pop("_artifact_bundle", None)
+
             payload.setdefault("artifact_id", "")
             payload.setdefault("artifact_saved", False)
             payload.setdefault("artifact_path", "")
 
             if persist_artifact:
                 persisted_artifact_id = signature[:16]
-                artifact_path = self._persist_artifact_payload(task, persisted_artifact_id, payload)
+                if artifact_bundle is None:
+                    if task == "classification":
+                        artifact_bundle = self._build_classification_serving_bundle(model_name, feature_names)
+                    else:
+                        artifact_bundle = self._build_regression_serving_bundle(model_name, feature_names)
+                artifact_path, _ = self._persist_artifact_bundle(
+                    task=task,
+                    model_name=model_name,
+                    artifact_id=persisted_artifact_id,
+                    signature=signature,
+                    data_version=data_version,
+                    bundle=artifact_bundle,
+                    result_payload=payload,
+                )
                 payload["artifact_id"] = persisted_artifact_id
                 payload["artifact_saved"] = True
                 payload["artifact_path"] = artifact_path

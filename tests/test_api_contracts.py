@@ -68,6 +68,80 @@ class _FakeService:
             else "",
         }
 
+    def list_artifacts(self, task: str | None = None, limit: int = 30):
+        del limit
+        return [
+            {
+                "task": task or "classification",
+                "artifact_id": "artifact-001",
+                "model_name": "Random Forest",
+                "signature": "sig-001",
+                "data_version": "abc123",
+                "updated_at": "2026-02-18T00:00:01+00:00",
+                "artifact_file_path": "results/model_artifacts/classification-artifact-001.joblib",
+                "metadata_file_path": "results/model_artifacts/classification-artifact-001.json",
+            }
+        ]
+
+    def get_artifact(self, task: str, artifact_id: str):
+        if task != "classification" or artifact_id != "artifact-001":
+            raise ValueError("Artifact not found")
+        return {
+            "task": "classification",
+            "artifact_id": "artifact-001",
+            "model_name": "Random Forest",
+            "signature": "sig-001",
+            "data_version": "abc123",
+            "updated_at": "2026-02-18T00:00:01+00:00",
+            "artifact_file_path": "results/model_artifacts/classification-artifact-001.joblib",
+            "metadata_file_path": "results/model_artifacts/classification-artifact-001.json",
+            "feature_names": ["speed_mean", "speed_std"],
+            "reference_stats": {"numeric": {"speed_mean": {"mean": 30.0, "std": 5.0}}},
+            "result_payload": self.custom_learning(
+                task="classification",
+                model_name="Random Forest",
+                feature_names=["speed_mean", "speed_std"],
+            ),
+        }
+
+    def predict_with_artifact(self, task: str, artifact_id: str, records: list[dict[str, object]]):
+        del records
+        if task != "classification" or artifact_id != "artifact-001":
+            raise ValueError("Artifact not found")
+        return {
+            "task": "classification",
+            "artifact_id": "artifact-001",
+            "n_records": 2,
+            "predictions": ["NORMAL", "AGGRESSIVE"],
+            "probabilities": [
+                {"NORMAL": 0.8, "AGGRESSIVE": 0.1, "DROWSY": 0.1},
+                {"NORMAL": 0.1, "AGGRESSIVE": 0.8, "DROWSY": 0.1},
+            ],
+        }
+
+    def detect_artifact_drift(self, task: str, artifact_id: str, records: list[dict[str, object]]):
+        del records
+        if task != "classification" or artifact_id != "artifact-001":
+            raise ValueError("Artifact not found")
+        return {
+            "task": "classification",
+            "artifact_id": "artifact-001",
+            "n_records": 2,
+            "overall_drift_score": 0.4,
+            "flagged_feature_count": 0,
+            "is_drifted": False,
+            "feature_reports": [
+                {
+                    "feature": "speed_mean",
+                    "type": "numeric",
+                    "score": 0.4,
+                    "flagged": False,
+                    "reference_mean": 30.0,
+                    "current_mean": 32.0,
+                }
+            ],
+        }
+
     def list_training_runs(self, task: str | None = None, limit: int = 30):
         del limit
         return [
@@ -206,3 +280,49 @@ def test_observability_metrics_contract(monkeypatch) -> None:
     payload = response.json()
     assert "requests" in payload
     assert isinstance(payload["requests"], dict)
+
+
+def test_cancel_job_contract(monkeypatch) -> None:
+    with _client(monkeypatch) as client:
+        job_response = client.post(
+            "/api/model/custom-learning/job",
+            json={
+                "task": "classification",
+                "model_name": "Random Forest",
+                "feature_names": ["speed_mean", "speed_std"],
+            },
+        )
+        assert job_response.status_code == 200
+        job_id = job_response.json()["job_id"]
+
+        cancel_response = client.post(f"/api/jobs/{job_id}/cancel")
+        assert cancel_response.status_code == 200
+        assert cancel_response.json()["status"] in {"cancel_requested", "canceled", "completed", "failed"}
+
+
+def test_artifact_endpoints_contract(monkeypatch) -> None:
+    with _client(monkeypatch) as client:
+        list_response = client.get("/api/artifacts", params={"task": "classification"})
+        assert list_response.status_code == 200
+        artifacts = list_response.json()["artifacts"]
+        assert artifacts[0]["artifact_id"] == "artifact-001"
+
+        detail_response = client.get("/api/artifacts/classification/artifact-001")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["model_name"] == "Random Forest"
+        assert detail["feature_names"] == ["speed_mean", "speed_std"]
+
+        predict_response = client.post(
+            "/api/artifacts/classification/artifact-001/predict",
+            json={"records": [{"speed_mean": 20.0}, {"speed_mean": 40.0}]},
+        )
+        assert predict_response.status_code == 200
+        assert predict_response.json()["n_records"] == 2
+
+        drift_response = client.post(
+            "/api/artifacts/classification/artifact-001/drift",
+            json={"records": [{"speed_mean": 20.0}, {"speed_mean": 40.0}]},
+        )
+        assert drift_response.status_code == 200
+        assert drift_response.json()["is_drifted"] is False

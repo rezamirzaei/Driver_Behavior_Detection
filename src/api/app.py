@@ -21,6 +21,14 @@ from src.api.config import get_settings
 from src.api.job_manager import JobManager
 from src.api.observability import ObservabilityRegistry
 from src.api.schemas import (
+    ArtifactDetailResponse,
+    ArtifactDriftFeatureReport,
+    ArtifactDriftRequest,
+    ArtifactDriftResponse,
+    ArtifactInfo,
+    ArtifactListResponse,
+    ArtifactPredictRequest,
+    ArtifactPredictResponse,
     ConfusionMatrixRequest,
     ConfusionMatrixResponse,
     CorrelationMatrixResponse,
@@ -33,6 +41,7 @@ from src.api.schemas import (
     FeatureRequest,
     FeatureResponse,
     HealthResponse,
+    JobCancelResponse,
     JobStartResponse,
     JobStatusResponse,
     ModelComparisonResponse,
@@ -79,6 +88,11 @@ async def lifespan(app: FastAPI):
             max_workers=settings.async_job_workers,
             celery_broker_url=settings.celery_broker_url,
             celery_result_backend=settings.celery_result_backend,
+            celery_task_max_retries=settings.celery_task_max_retries,
+            celery_retry_backoff=settings.celery_retry_backoff,
+            celery_retry_backoff_max=settings.celery_retry_backoff_max,
+            celery_soft_time_limit_seconds=settings.celery_soft_time_limit_seconds,
+            celery_time_limit_seconds=settings.celery_time_limit_seconds,
         )
         logger.info("API service initialized")
     except Exception:  # pragma: no cover - startup should fail loudly in runtime
@@ -125,6 +139,7 @@ async def request_timing_middleware(request: Request, call_next):
     response.headers["X-Process-Time-ms"] = f"{elapsed_ms:.2f}"
     response.headers["X-Request-ID"] = request_id
     return response
+
 
 settings = get_settings()
 app.add_middleware(
@@ -369,6 +384,15 @@ def get_job_status(job_id: str, job_manager: JobManager = Depends(require_job_ma
     return JobStatusResponse(**record.to_payload())
 
 
+@app.post("/api/jobs/{job_id}/cancel", response_model=JobCancelResponse)
+def cancel_job(job_id: str, job_manager: JobManager = Depends(require_job_manager)) -> JobCancelResponse:
+    """Cancel one asynchronous job if still pending/running."""
+    cancelled, status = job_manager.cancel(job_id)
+    if not cancelled and status == "not_found":
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    return JobCancelResponse(job_id=job_id, status=status)
+
+
 @app.get("/api/training-runs", response_model=TrainingRunListResponse)
 def get_training_runs(
     task: Optional[TaskType] = None,
@@ -388,6 +412,62 @@ def get_training_run(run_id: str, service: AnalyticsService = Depends(require_se
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return TrainingRunDetailResponse(**payload)
+
+
+@app.get("/api/artifacts", response_model=ArtifactListResponse)
+def list_artifacts(
+    task: Optional[TaskType] = None,
+    limit: int = 30,
+    service: AnalyticsService = Depends(require_service),
+) -> ArtifactListResponse:
+    """List persisted model artifacts."""
+    payload = service.list_artifacts(task=task, limit=limit)
+    return ArtifactListResponse(artifacts=[ArtifactInfo(**item) for item in payload])
+
+
+@app.get("/api/artifacts/{task}/{artifact_id}", response_model=ArtifactDetailResponse)
+def get_artifact(
+    task: TaskType,
+    artifact_id: str,
+    service: AnalyticsService = Depends(require_service),
+) -> ArtifactDetailResponse:
+    """Return one persisted artifact metadata payload."""
+    try:
+        payload = service.get_artifact(task=task, artifact_id=artifact_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ArtifactDetailResponse(**payload)
+
+
+@app.post("/api/artifacts/{task}/{artifact_id}/predict", response_model=ArtifactPredictResponse)
+def predict_from_artifact(
+    task: TaskType,
+    artifact_id: str,
+    request: ArtifactPredictRequest,
+    service: AnalyticsService = Depends(require_service),
+) -> ArtifactPredictResponse:
+    """Run batch inference from a persisted artifact."""
+    try:
+        payload = service.predict_with_artifact(task=task, artifact_id=artifact_id, records=request.records)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ArtifactPredictResponse(**payload)
+
+
+@app.post("/api/artifacts/{task}/{artifact_id}/drift", response_model=ArtifactDriftResponse)
+def drift_from_artifact(
+    task: TaskType,
+    artifact_id: str,
+    request: ArtifactDriftRequest,
+    service: AnalyticsService = Depends(require_service),
+) -> ArtifactDriftResponse:
+    """Run drift checks against artifact training references."""
+    try:
+        payload = service.detect_artifact_drift(task=task, artifact_id=artifact_id, records=request.records)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    payload["feature_reports"] = [ArtifactDriftFeatureReport(**item) for item in payload.get("feature_reports", [])]
+    return ArtifactDriftResponse(**payload)
 
 
 @app.get("/api/model/compare", response_model=ModelComparisonResponse)
