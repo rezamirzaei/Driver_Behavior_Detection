@@ -55,6 +55,7 @@
             <button type="button" ng-class="{'active': vm.activeTab === 'pair'}" ng-click="vm.activeTab = 'pair'">Two Features</button>
             <button type="button" ng-class="{'active': vm.activeTab === 'corr'}" ng-click="vm.activeTab = 'corr'">Correlation Matrix</button>
             <button type="button" ng-class="{'active': vm.activeTab === 'diagnostics'}" ng-click="vm.activeTab = 'diagnostics'">Model Diagnostics</button>
+            <button type="button" ng-if="vm.task === 'classification'" ng-class="{'active': vm.activeTab === 'custom'}" ng-click="vm.activeTab = 'custom'">Custom Learning</button>
             <button type="button" ng-class="{'active': vm.activeTab === 'compare'}" ng-click="vm.activeTab = 'compare'">Model Comparison</button>
         </div>
 
@@ -194,6 +195,98 @@
                         </thead>
                         <tbody>
                         <tr ng-repeat="point in vm.results.diagnostics.training_history.points">
+                            <td>{{ point.iteration }}</td>
+                            <td>{{ point.train_error | number:4 }}</td>
+                            <td>{{ point.validation_error !== null ? (point.validation_error | number:4) : '-' }}</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </article>
+
+        <article class="card" ng-show="vm.activeTab === 'custom' && vm.task === 'classification'">
+            <h3>Custom Learning Lab</h3>
+            <p>Select any feature subset and classifier, then inspect train/validation confusion matrices and error curves.</p>
+            <div class="field-split">
+                <div class="field-row">
+                    <label for="customFeatureSelect">Features</label>
+                    <select id="customFeatureSelect" class="multi-select" multiple size="10" ng-model="vm.customLearning.selectedFeatures" ng-change="vm.onCustomFeatureChange()" ng-options="f.name as f.name for f in vm.features"></select>
+                </div>
+                <div class="field-row">
+                    <label for="customModelSelect">Model</label>
+                    <select id="customModelSelect" ng-model="vm.customLearning.modelSelection" ng-options="m for m in vm.models"></select>
+                </div>
+            </div>
+
+            <div class="table-wrap" ng-if="vm.customSelectedFeatureInfo.length">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Feature</th>
+                        <th>Type</th>
+                        <th>Source</th>
+                        <th>Description</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr ng-repeat="feature in vm.customSelectedFeatureInfo">
+                        <td>{{ feature.name }}</td>
+                        <td>{{ feature.is_numeric ? 'Numeric' : 'Categorical' }}</td>
+                        <td>{{ feature.source_type }}</td>
+                        <td>{{ feature.description }} {{ feature.source_summary }}</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <button type="button" class="action" ng-click="vm.runCustomLearning()" ng-disabled="vm.loading.custom">
+                Run Custom Learning
+            </button>
+            <p class="error" ng-if="vm.errors.custom">{{ vm.errors.custom }}</p>
+            <p class="loading" ng-if="vm.loading.custom">Training custom model...</p>
+
+            <div class="result" ng-if="vm.results.custom">
+                <p class="explanation">{{ vm.results.custom.explanation }}</p>
+
+                <div class="field-split metric-columns">
+                    <div>
+                        <h4>Train Metrics</h4>
+                        <div class="metric-grid">
+                            <div class="metric" ng-repeat="(key, value) in vm.results.custom.train_metrics">
+                                <span>{{ key }}</span>
+                                <strong>{{ value | number:4 }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4>Validation Metrics</h4>
+                        <div class="metric-grid">
+                            <div class="metric" ng-repeat="(key, value) in vm.results.custom.validation_metrics">
+                                <span>{{ key }}</span>
+                                <strong>{{ value | number:4 }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="plot-stack">
+                    <img ng-src="{{ vm.results.custom.train_confusion_matrix_url }}" alt="Training confusion matrix">
+                    <img ng-src="{{ vm.results.custom.validation_confusion_matrix_url }}" alt="Validation confusion matrix">
+                    <img ng-src="{{ vm.results.custom.error_plot_url }}" alt="Training and validation error by iteration">
+                </div>
+
+                <div class="table-wrap" ng-if="vm.results.custom.training_history.points.length">
+                    <table class="history-table">
+                        <thead>
+                        <tr>
+                            <th>Iteration</th>
+                            <th>Train Error</th>
+                            <th>Validation Error</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr ng-repeat="point in vm.results.custom.training_history.points">
                             <td>{{ point.iteration }}</td>
                             <td>{{ point.train_error | number:4 }}</td>
                             <td>{{ point.validation_error !== null ? (point.validation_error | number:4) : '-' }}</td>

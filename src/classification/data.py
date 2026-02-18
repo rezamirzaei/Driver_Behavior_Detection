@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from src.data.event_counts import count_event_starts, count_threshold_events
+
 
 @dataclass
 class TripInfo:
@@ -182,12 +184,12 @@ def extract_raw_features(trip_path: Path) -> Dict[str, Any]:
         jerk_mag = np.sqrt(jerk_x**2 + jerk_y**2)
         features["jerk_magnitude_std"] = jerk_mag.std()
 
-        # Event-like features from thresholds
-        features["brake_count"] = (acc["acc_x_kf"] < -0.1).sum()
-        features["hard_brake_count"] = (acc["acc_x_kf"] < -0.3).sum()
-        features["accel_count"] = (acc["acc_x_kf"] > 0.1).sum()
-        features["turn_count"] = (acc["acc_y_kf"].abs() > 0.1).sum()
-        features["sharp_turn_count"] = (acc["acc_y_kf"].abs() > 0.3).sum()
+        # Event-like features from thresholds: count contiguous events, not raw samples.
+        features["brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=-0.1, direction="below")
+        features["hard_brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=-0.3, direction="below")
+        features["accel_count"] = count_threshold_events(acc["acc_x_kf"], threshold=0.1, direction="above")
+        features["turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > 0.1)
+        features["sharp_turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > 0.3)
 
         # Normalized event rates (events per second)
         duration = features.get("trip_duration", 0)

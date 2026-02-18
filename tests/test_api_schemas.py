@@ -11,6 +11,8 @@ from src.api.schemas import (
     ConfusionMatrixRequest,
     ConfusionMatrixResponse,
     CorrelationMatrixResponse,
+    CustomLearningRequest,
+    CustomLearningResponse,
     FeatureInfo,
     FeatureRequest,
     FeatureResponse,
@@ -82,6 +84,22 @@ class TestSpecializedModelRequests:
     def test_regression_request_requires_regression(self) -> None:
         with pytest.raises(ValidationError):
             RegressionDiagnosticsRequest(task="classification", model_name=_first_model("classification"))
+
+    def test_custom_learning_request_validates_feature_and_model(self) -> None:
+        req = CustomLearningRequest(
+            task="classification",
+            model_name=_first_model("classification"),
+            feature_names=ALLOWED_FEATURES_BY_TASK["classification"][:3],
+        )
+        assert len(req.feature_names) == 3
+
+    def test_custom_learning_request_rejects_invalid_feature(self) -> None:
+        with pytest.raises(ValidationError):
+            CustomLearningRequest(
+                task="classification",
+                model_name=_first_model("classification"),
+                feature_names=["not_a_real_feature"],
+            )
 
 
 class TestResponseModels:
@@ -179,6 +197,21 @@ class TestResponseModels:
             ],
         )
         assert payload.points[0].iteration == 1
+
+    def test_custom_learning_response(self) -> None:
+        payload = CustomLearningResponse(
+            task="classification",
+            model_name="Random Forest",
+            selected_features=[FeatureInfo(name="speed_mean", description="Average speed", is_numeric=True)],
+            train_metrics={"accuracy": 0.99},
+            validation_metrics={"accuracy": 0.95},
+            explanation="ok",
+            train_confusion_matrix_url="data:image/png;base64,abc",
+            validation_confusion_matrix_url="data:image/png;base64,abc",
+            error_plot_url="data:image/png;base64,abc",
+        )
+        assert payload.task == "classification"
+        assert payload.selected_features[0].name == "speed_mean"
 
     def test_health_response(self) -> None:
         health = HealthResponse(status="ok", version="2.0.0", tasks_loaded={"classification": True, "regression": True})

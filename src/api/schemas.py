@@ -118,6 +118,42 @@ class RegressionDiagnosticsRequest(ModelRequest):
         return self
 
 
+class CustomLearningRequest(BaseModel):
+    """Request for custom classification learning with selected feature subset."""
+
+    task: Literal["classification"] = "classification"
+    model_name: str = Field(min_length=1)
+    feature_names: List[str] = Field(min_length=1)
+
+    @field_validator("model_name")
+    @classmethod
+    def normalize_model_name(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("feature_names")
+    @classmethod
+    def normalize_feature_names(cls, values: List[str]) -> List[str]:
+        cleaned = [value.strip() for value in values if value and value.strip()]
+        if not cleaned:
+            raise ValueError("At least one feature must be selected.")
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("feature_names must not contain duplicates.")
+        return cleaned
+
+    @model_validator(mode="after")
+    def validate_selection(self) -> "CustomLearningRequest":
+        allowed_models = ALLOWED_MODELS_BY_TASK["classification"]
+        if self.model_name not in allowed_models:
+            raise ValueError(f"Model '{self.model_name}' is not valid for classification.")
+
+        allowed_features = ALLOWED_FEATURES_BY_TASK["classification"]
+        invalid_features = [name for name in self.feature_names if name not in allowed_features]
+        if invalid_features:
+            raise ValueError("Invalid feature(s) for classification task: " + ", ".join(invalid_features))
+
+        return self
+
+
 class FeatureInfo(BaseModel):
     """Feature metadata for UI controls."""
 
@@ -247,6 +283,21 @@ class RegressionDiagnosticsResponse(BaseModel):
     metrics: Dict[str, float]
     explanation: str
     plot_url: str
+    error_plot_url: str = ""
+    training_history: TrainingHistoryPayload = Field(default_factory=TrainingHistoryPayload)
+
+
+class CustomLearningResponse(BaseModel):
+    """Response for custom feature-subset classification training."""
+
+    task: Literal["classification"]
+    model_name: str
+    selected_features: List[FeatureInfo] = Field(default_factory=list)
+    train_metrics: Dict[str, float]
+    validation_metrics: Dict[str, float]
+    explanation: str
+    train_confusion_matrix_url: str
+    validation_confusion_matrix_url: str
     error_plot_url: str = ""
     training_history: TrainingHistoryPayload = Field(default_factory=TrainingHistoryPayload)
 

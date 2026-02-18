@@ -21,17 +21,21 @@ from src.api.schemas import (
     ConfusionMatrixResponse,
     CorrelationMatrixResponse,
     CorrelationPair,
+    CustomLearningRequest,
+    CustomLearningResponse,
     FeatureInfo,
     FeatureListResponse,
     FeatureRequest,
     FeatureResponse,
     HealthResponse,
     ModelComparisonResponse,
+    ModelInfo,
     ModelsResponse,
     RegressionDiagnosticsRequest,
     RegressionDiagnosticsResponse,
     TaskMetadataResponse,
     TaskQuery,
+    TrainingHistoryPayload,
     TwoFeatureRequest,
     TwoFeatureResponse,
 )
@@ -121,10 +125,11 @@ def list_models(
     service: AnalyticsService = Depends(require_service),
 ) -> ModelsResponse:
     """List models available for selected task."""
+    model_details = [ModelInfo(**item) for item in service.list_model_payload(query.task)]
     return ModelsResponse(
         task=query.task,
         models=service.list_models(query.task),
-        model_details=service.list_model_payload(query.task),
+        model_details=model_details,
     )
 
 
@@ -207,7 +212,7 @@ def get_confusion_matrix(
         explanation=explanation,
         plot_url=plot_url,
         error_plot_url=error_plot_url,
-        training_history=history_payload,
+        training_history=TrainingHistoryPayload(**history_payload),
     )
 
 
@@ -217,9 +222,7 @@ def get_regression_diagnostics(
     service: AnalyticsService = Depends(require_service),
 ) -> RegressionDiagnosticsResponse:
     """Train selected regressor and return residual diagnostics."""
-    metrics, explanation, plot_url, history_payload, error_plot_url = service.regression_diagnostics(
-        request.model_name
-    )
+    metrics, explanation, plot_url, history_payload, error_plot_url = service.regression_diagnostics(request.model_name)
     payload = {
         "r2": round(metrics.r2, 4),
         "rmse": round(metrics.rmse, 4),
@@ -235,8 +238,21 @@ def get_regression_diagnostics(
         explanation=explanation,
         plot_url=plot_url,
         error_plot_url=error_plot_url,
-        training_history=history_payload,
+        training_history=TrainingHistoryPayload(**history_payload),
     )
+
+
+@app.post("/api/model/custom-learning", response_model=CustomLearningResponse)
+def run_custom_learning(
+    request: CustomLearningRequest,
+    service: AnalyticsService = Depends(require_service),
+) -> CustomLearningResponse:
+    """Train classification model on selected feature subset and return diagnostics."""
+    payload = service.custom_classification_learning(
+        model_name=request.model_name,
+        feature_names=request.feature_names,
+    )
+    return CustomLearningResponse(**payload)
 
 
 @app.get("/api/model/compare", response_model=ModelComparisonResponse)

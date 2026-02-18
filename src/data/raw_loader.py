@@ -14,6 +14,8 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from src.data.event_counts import count_event_starts, count_threshold_events
+
 
 def get_all_trips(data_dir: Path) -> List[Dict]:
     """
@@ -300,19 +302,12 @@ def extract_raw_features(trip_path: Path) -> Optional[Dict]:
         features["jerk_x_std"] = jerk_x.std()
         features["jerk_y_std"] = jerk_y.std()
 
-        # Braking events (negative X acceleration)
-        brake_threshold = -0.1
-        features["brake_count"] = int((acc["acc_x_kf"] < brake_threshold).sum())
-        features["hard_brake_count"] = int((acc["acc_x_kf"] < -0.3).sum())
-
-        # Acceleration events (positive X acceleration)
-        accel_threshold = 0.1
-        features["accel_count"] = int((acc["acc_x_kf"] > accel_threshold).sum())
-
-        # Turning events (lateral Y acceleration)
-        turn_threshold = 0.1
-        features["turn_count"] = int((acc["acc_y_kf"].abs() > turn_threshold).sum())
-        features["sharp_turn_count"] = int((acc["acc_y_kf"].abs() > 0.3).sum())
+        # Threshold-driven events: count event starts instead of sample totals.
+        features["brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=-0.1, direction="below")
+        features["hard_brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=-0.3, direction="below")
+        features["accel_count"] = count_threshold_events(acc["acc_x_kf"], threshold=0.1, direction="above")
+        features["turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > 0.1)
+        features["sharp_turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > 0.3)
 
     # Event-based features (from EVENTS_INERTIAL.txt)
     if events is not None and len(events) > 0:

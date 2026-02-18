@@ -21,7 +21,7 @@ import pandas as pd
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.model_selection import train_test_split
 
-from src.api.catalog import TaskCatalog, build_task_catalogs
+from src.api.catalog import TaskCatalog, TaskType, build_task_catalogs
 from src.api.config import AppSettings
 from src.api.model_registry import ModelRegistry
 from src.core.schemas import ClassificationMetrics, RegressionMetrics, SplitData, TrainingHistory
@@ -79,15 +79,34 @@ class AnalyticsService:
             "regression": self._load_regression_runtime(),
         }
 
+    @staticmethod
+    def _looks_like_legacy_event_counts(df: pd.DataFrame) -> bool:
+        """Detect likely legacy caches where event counts stored sample totals."""
+        required_columns = {"hard_brake_count", "trip_duration"}
+        if not required_columns.issubset(df.columns):
+            return False
+
+        duration = pd.to_numeric(df["trip_duration"], errors="coerce").replace(0, np.nan).abs()
+        hard_brakes = pd.to_numeric(df["hard_brake_count"], errors="coerce").fillna(0.0)
+        rate = (hard_brakes / duration).replace([np.inf, -np.inf], np.nan).dropna()
+        if rate.empty:
+            return False
+        return bool(rate.median() > 0.5)
+
     def _load_classification_runtime(self) -> TaskRuntime:
         catalog = self.catalogs["classification"]
         cache_path = self.settings.resolve_path(self.settings.classification_cache_csv)
+        from src.classification.data import load_or_build_dataset
 
         if cache_path.exists():
             df = pd.read_csv(cache_path)
+            if self._looks_like_legacy_event_counts(df):
+                logger.warning(
+                    "Classification cache appears to use legacy sample-based event counts; rebuilding from raw data."
+                )
+                raw_dir = self.settings.resolve_path(self.settings.classification_raw_dir)
+                df = load_or_build_dataset(data_dir=raw_dir, cache_path=cache_path, force_rebuild=True)
         else:
-            from src.classification.data import load_or_build_dataset
-
             raw_dir = self.settings.resolve_path(self.settings.classification_raw_dir)
             df = load_or_build_dataset(data_dir=raw_dir, cache_path=cache_path)
 
@@ -206,21 +225,21 @@ class AnalyticsService:
         plt.close(fig)
         return f"data:image/png;base64,{encoded}"
 
-    def _runtime(self, task: str) -> TaskRuntime:
+    def _runtime(self, task: TaskType) -> TaskRuntime:
         runtime = self.runtimes.get(task)
         if runtime is None:
             raise ValueError(f"Unsupported task: {task}")
         return runtime
 
     @staticmethod
-    def _feature_source_summary(task: str, source_type: str) -> str:
+    def _feature_source_summary(task: TaskType, source_type: str) -> str:
         if task == "classification":
             return "Processed feature aggregated from raw GPS/accelerometer driving signals."
         if source_type == "raw":
             return "Raw EPA attribute taken directly from the source dataset."
         return "Processed feature engineered from one or more raw EPA vehicle attributes."
 
-    def list_feature_payload(self, task: str) -> List[Dict[str, Any]]:
+    def list_feature_payload(self, task: TaskType) -> List[Dict[str, Any]]:
         runtime = self._runtime(task)
         return [
             {
@@ -236,13 +255,13 @@ class AnalyticsService:
             for feature in runtime.feature_columns
         ]
 
-    def list_model_payload(self, task: str) -> List[Dict[str, Any]]:
+    def list_model_payload(self, task: TaskType) -> List[Dict[str, Any]]:
         return self.model_registry.list_model_payload(task)
 
-    def list_models(self, task: str) -> List[str]:
+    def list_models(self, task: TaskType) -> List[str]:
         return self.model_registry.list_models(task)
 
-    def metadata(self, task: str) -> Dict[str, Any]:
+    def metadata(self, task: TaskType) -> Dict[str, Any]:
         runtime = self._runtime(task)
         return {
             "task": task,
@@ -256,7 +275,7 @@ class AnalyticsService:
             "model_details": self.list_model_payload(task),
         }
 
-    def analyze_feature(self, task: str, feature_name: str) -> Tuple[Dict[str, float], str, str, Dict[str, Any]]:
+    def analyze_feature(self, task: TaskType, feature_name: str) -> Tuple[Dict[str, float], str, str, Dict[str, Any]]:
         runtime = self._runtime(task)
         series = runtime.dataframe[feature_name]
         feature_desc = runtime.catalog.feature_descriptions.get(feature_name, "")
@@ -342,7 +361,7 @@ class AnalyticsService:
 
         return statistics, explanation, self.figure_to_data_url(fig), feature_info
 
-    def analyze_two_features(self, task: str, feature1: str, feature2: str) -> Tuple[float, str, str]:
+    def analyze_two_features(self, task: TaskType, feature1: str, feature2: str) -> Tuple[float, str, str]:
         runtime = self._runtime(task)
         df = runtime.dataframe
 
@@ -390,7 +409,7 @@ class AnalyticsService:
 
         return corr, explanation, self.figure_to_data_url(fig)
 
-    def correlation_matrix(self, task: str) -> Tuple[List[List[float]], List[Dict[str, Any]], str, str, List[str]]:
+    def correlation_matrix(self, task: TaskType) -> Tuple[List[List[float]], List[Dict[str, Any]], str, str, List[str]]:
         runtime = self._runtime(task)
         numeric_cols = runtime.numeric_feature_columns
         corr_df = runtime.dataframe[numeric_cols].corr().fillna(0.0)
@@ -421,7 +440,7 @@ class AnalyticsService:
             numeric_cols,
         )
 
-    def _build_model(self, task: str, model_name: str) -> Any:
+    def _build_model(self, task: TaskType, model_name: str) -> Any:
         return self.model_registry.create_model(task, model_name)
 
     @staticmethod
@@ -467,7 +486,7 @@ class AnalyticsService:
             "points": points,
         }
 
-    def _train_with_history(self, task: str, model_name: str) -> Tuple[Any, TrainingHistory]:
+    def _train_with_history(self, task: TaskType, model_name: str) -> Tuple[Any, TrainingHistory]:
         runtime = self._runtime(task)
         model = self._build_model(task, model_name)
 
@@ -481,6 +500,55 @@ class AnalyticsService:
             n_iterations=self.settings.training_history_iterations,
         )
         return trained.model, trained.history
+
+    def _classification_split_for_features(
+        self,
+        feature_names: List[str],
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[str]]:
+        runtime = self._runtime("classification")
+        missing = [feature for feature in feature_names if feature not in runtime.feature_columns]
+        if missing:
+            raise ValueError(f"Selected feature(s) not available: {', '.join(missing)}")
+
+        data = runtime.dataframe.copy()
+        X_for_split = data[feature_names + ["driver"]].copy()
+        y = data["behavior"].copy()
+
+        X_train, X_test, y_train, y_test = split_by_driver(
+            X_for_split,
+            y,
+            test_drivers=["D6"],
+            test_size=self.settings.test_size,
+            random_state=self.settings.random_state,
+        )
+
+        split_data = SplitData(
+            X_train=X_train,
+            X_test=X_test,
+            y_train=y_train,
+            y_test=y_test,
+            feature_names=feature_names,
+            target_name="behavior",
+        )
+        train_features, test_features = preprocess_features(split_data, scaler_type="robust")
+        class_names = sorted(data["behavior"].astype(str).str.upper().unique().tolist())
+        return (
+            np.asarray(train_features.X),
+            np.asarray(test_features.X),
+            np.asarray(y_train),
+            np.asarray(y_test),
+            class_names,
+        )
+
+    @staticmethod
+    def _classification_metrics_payload(metrics: ClassificationMetrics) -> Dict[str, float]:
+        return {
+            "accuracy": round(metrics.accuracy, 4),
+            "balanced_accuracy": round(metrics.balanced_accuracy, 4),
+            "precision": round(metrics.precision, 4),
+            "recall": round(metrics.recall, 4),
+            "f1_score": round(metrics.f1_score, 4),
+        }
 
     def classification_confusion_matrix(
         self,
@@ -509,6 +577,62 @@ class AnalyticsService:
             self._history_payload(history),
             self.figure_to_data_url(history_fig),
         )
+
+    def custom_classification_learning(
+        self,
+        model_name: str,
+        feature_names: List[str],
+    ) -> Dict[str, Any]:
+        unique_features = list(dict.fromkeys(feature_names))
+        if not unique_features:
+            raise ValueError("At least one feature must be selected.")
+
+        X_train, X_test, y_train, y_test, class_names = self._classification_split_for_features(unique_features)
+        model = self._build_model("classification", model_name)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            trained = train_model(
+                X_train,
+                y_train,
+                model,
+                model_name,
+                X_val=X_test,
+                y_val=y_test,
+                n_iterations=self.settings.training_history_iterations,
+                feature_names=unique_features,
+            )
+
+        train_metrics = evaluate_classifier(trained.model, X_train, y_train, class_names)
+        validation_metrics = evaluate_classifier(trained.model, X_test, y_test, class_names)
+
+        train_fig = plot_confusion_matrix(train_metrics)
+        validation_fig = plot_confusion_matrix(validation_metrics)
+        history_fig = plot_training_error_history(
+            trained.history,
+            title=f"{model_name} - Train/Validation Error by Iteration",
+        )
+
+        feature_lookup = {item["name"]: item for item in self.list_feature_payload("classification")}
+        selected_feature_payload = [feature_lookup[name] for name in unique_features if name in feature_lookup]
+
+        explanation = (
+            f"Trained {model_name} using {len(unique_features)} selected feature(s). "
+            f"Validation accuracy={validation_metrics.accuracy:.4f}, F1={validation_metrics.f1_score:.4f}."
+        )
+
+        return {
+            "task": "classification",
+            "model_name": model_name,
+            "selected_features": selected_feature_payload,
+            "train_metrics": self._classification_metrics_payload(train_metrics),
+            "validation_metrics": self._classification_metrics_payload(validation_metrics),
+            "explanation": explanation,
+            "train_confusion_matrix_url": self.figure_to_data_url(train_fig),
+            "validation_confusion_matrix_url": self.figure_to_data_url(validation_fig),
+            "error_plot_url": self.figure_to_data_url(history_fig),
+            "training_history": self._history_payload(trained.history),
+        }
 
     def regression_diagnostics(
         self,
@@ -543,7 +667,7 @@ class AnalyticsService:
             self.figure_to_data_url(history_fig),
         )
 
-    def compare_models(self, task: str) -> Tuple[List[Dict[str, Any]], str, str, str]:
+    def compare_models(self, task: TaskType) -> Tuple[List[Dict[str, Any]], str, str, str]:
         runtime = self._runtime(task)
         models = self.list_models(task)
         X_train_fit = runtime.X_train

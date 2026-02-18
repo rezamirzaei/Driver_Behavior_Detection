@@ -29,8 +29,10 @@
         vm.featureSelection = null;
         vm.featurePair = { first: null, second: null };
         vm.modelSelection = null;
+        vm.customLearning = { selectedFeatures: [], modelSelection: null };
         vm.selectedFeatureInfo = null;
         vm.selectedModelInfo = null;
+        vm.customSelectedFeatureInfo = [];
 
         vm.loading = {
             metadata: false,
@@ -38,7 +40,8 @@
             pair: false,
             corr: false,
             diagnostics: false,
-            compare: false
+            compare: false,
+            custom: false
         };
 
         vm.errors = {
@@ -47,7 +50,8 @@
             pair: null,
             corr: null,
             diagnostics: null,
-            compare: null
+            compare: null,
+            custom: null
         };
 
         vm.results = {
@@ -55,7 +59,8 @@
             pair: null,
             corr: null,
             diagnostics: null,
-            compare: null
+            compare: null,
+            custom: null
         };
 
         vm.resultKeys = {
@@ -70,7 +75,9 @@
         vm.runModelComparison = runModelComparison;
         vm.onFeatureChange = onFeatureChange;
         vm.onModelChange = onModelChange;
+        vm.onCustomFeatureChange = onCustomFeatureChange;
         vm.renderCell = renderCell;
+        vm.runCustomLearning = runCustomLearning;
 
         init();
 
@@ -84,9 +91,11 @@
             vm.results.corr = null;
             vm.results.diagnostics = null;
             vm.results.compare = null;
+            vm.results.custom = null;
             vm.resultKeys.compare = [];
             vm.selectedFeatureInfo = null;
             vm.selectedModelInfo = null;
+            vm.customSelectedFeatureInfo = [];
             vm.featureLookup = {};
             vm.modelLookup = {};
 
@@ -95,10 +104,14 @@
             vm.errors.corr = null;
             vm.errors.diagnostics = null;
             vm.errors.compare = null;
+            vm.errors.custom = null;
         }
 
         function onTaskChange() {
             resetTaskScopedState();
+            if (vm.task !== "classification" && vm.activeTab === "custom") {
+                vm.activeTab = "feature";
+            }
             loadTaskData();
         }
 
@@ -122,6 +135,11 @@
                     vm.modelSelection = vm.models.length ? vm.models[0] : null;
                     onFeatureChange();
                     onModelChange();
+                    vm.customLearning.modelSelection = vm.modelSelection;
+                    vm.customLearning.selectedFeatures = vm.features.slice(0, 4).map(function (feature) {
+                        return feature.name;
+                    });
+                    onCustomFeatureChange();
 
                     if (vm.numericFeatures.length >= 2) {
                         vm.featurePair.first = vm.numericFeatures[0].name;
@@ -156,6 +174,16 @@
 
         function onModelChange() {
             vm.selectedModelInfo = vm.modelLookup[vm.modelSelection] || null;
+        }
+
+        function onCustomFeatureChange() {
+            vm.customSelectedFeatureInfo = (vm.customLearning.selectedFeatures || [])
+                .map(function (name) {
+                    return vm.featureLookup[name] || null;
+                })
+                .filter(function (item) {
+                    return item !== null;
+                });
         }
 
         function runFeatureAnalysis() {
@@ -284,6 +312,41 @@
                 })
                 .finally(function () {
                     vm.loading.compare = false;
+                });
+        }
+
+        function runCustomLearning() {
+            if (vm.task !== "classification") {
+                vm.errors.custom = "Custom learning is available only for classification task.";
+                return;
+            }
+            if (!vm.customLearning.modelSelection) {
+                vm.errors.custom = "Select a model for custom learning.";
+                return;
+            }
+            if (!vm.customLearning.selectedFeatures || vm.customLearning.selectedFeatures.length === 0) {
+                vm.errors.custom = "Select at least one feature.";
+                return;
+            }
+
+            vm.loading.custom = true;
+            vm.errors.custom = null;
+            vm.results.custom = null;
+
+            ApiService.runCustomLearning({
+                task: "classification",
+                model_name: vm.customLearning.modelSelection,
+                feature_names: vm.customLearning.selectedFeatures
+            })
+                .then(function (response) {
+                    vm.results.custom = response.data;
+                    vm.customSelectedFeatureInfo = response.data.selected_features || vm.customSelectedFeatureInfo;
+                })
+                .catch(function (error) {
+                    vm.errors.custom = parseError(error, "Custom learning run failed.");
+                })
+                .finally(function () {
+                    vm.loading.custom = false;
                 });
         }
 

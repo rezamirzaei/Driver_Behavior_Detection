@@ -117,11 +117,11 @@ FEATURE_DESCRIPTIONS_CLASSIFICATION: Dict[str, str] = {
     "acc_magnitude_max": "Peak acceleration magnitude observed.",
     "jerk_x_std": "Variation in longitudinal jerk (acceleration change rate).",
     "jerk_y_std": "Variation in lateral jerk.",
-    "brake_count": "Count of braking events from acceleration thresholds.",
-    "hard_brake_count": "Count of hard braking events.",
-    "accel_count": "Count of acceleration events.",
-    "turn_count": "Count of turning events from lateral acceleration.",
-    "sharp_turn_count": "Count of sharp turning events.",
+    "brake_count": "Count of braking events (contiguous threshold crossings) from longitudinal acceleration.",
+    "hard_brake_count": "Count of hard-braking events with stronger negative acceleration threshold crossings.",
+    "accel_count": "Count of acceleration events (contiguous positive threshold crossings).",
+    "turn_count": "Count of turning events from contiguous lateral acceleration threshold crossings.",
+    "sharp_turn_count": "Count of sharp-turn events from stronger lateral acceleration threshold crossings.",
 }
 
 FEATURE_DESCRIPTIONS_REGRESSION: Dict[str, str] = {
@@ -221,9 +221,7 @@ def _build_feature_sources(task: TaskType, features: List[str]) -> Dict[str, Fea
 
 def _fallback_feature_description(task: TaskType, feature: str, source: FeatureSourceType) -> str:
     if task == "classification":
-        return (
-            f"Processed driving-signal feature '{feature}' derived from raw UAH GPS/accelerometer telemetry windows."
-        )
+        return f"Processed driving-signal feature '{feature}' derived from raw UAH GPS/accelerometer telemetry windows."
 
     if source == "raw":
         return f"Raw EPA vehicle attribute '{feature}' used directly from the source dataset."

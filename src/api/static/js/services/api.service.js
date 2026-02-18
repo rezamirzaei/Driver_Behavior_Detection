@@ -40,6 +40,10 @@
             return $http.post("/api/model/regression-diagnostics", payload);
         };
 
+        this.runCustomLearning = function (payload) {
+            return $http.post("/api/model/custom-learning", payload);
+        };
+
         this.compareModels = function (task) {
             return $http.get("/api/model/compare", { params: { task: task } });
         };
