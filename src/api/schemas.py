@@ -119,9 +119,9 @@ class RegressionDiagnosticsRequest(ModelRequest):
 
 
 class CustomLearningRequest(BaseModel):
-    """Request for custom classification learning with selected feature subset."""
+    """Request for task-specific custom learning with selected feature subset."""
 
-    task: Literal["classification"] = "classification"
+    task: TaskType = "classification"
     model_name: str = Field(min_length=1)
     feature_names: List[str] = Field(min_length=1)
 
@@ -142,14 +142,14 @@ class CustomLearningRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_selection(self) -> "CustomLearningRequest":
-        allowed_models = ALLOWED_MODELS_BY_TASK["classification"]
+        allowed_models = ALLOWED_MODELS_BY_TASK[self.task]
         if self.model_name not in allowed_models:
-            raise ValueError(f"Model '{self.model_name}' is not valid for classification.")
+            raise ValueError(f"Model '{self.model_name}' is not valid for task '{self.task}'.")
 
-        allowed_features = ALLOWED_FEATURES_BY_TASK["classification"]
+        allowed_features = ALLOWED_FEATURES_BY_TASK[self.task]
         invalid_features = [name for name in self.feature_names if name not in allowed_features]
         if invalid_features:
-            raise ValueError("Invalid feature(s) for classification task: " + ", ".join(invalid_features))
+            raise ValueError(f"Invalid feature(s) for task '{self.task}': " + ", ".join(invalid_features))
 
         return self
 
@@ -288,16 +288,17 @@ class RegressionDiagnosticsResponse(BaseModel):
 
 
 class CustomLearningResponse(BaseModel):
-    """Response for custom feature-subset classification training."""
+    """Response for custom feature-subset training."""
 
-    task: Literal["classification"]
+    task: TaskType
     model_name: str
     selected_features: List[FeatureInfo] = Field(default_factory=list)
     train_metrics: Dict[str, float]
     validation_metrics: Dict[str, float]
     explanation: str
-    train_confusion_matrix_url: str
-    validation_confusion_matrix_url: str
+    train_confusion_matrix_url: str = ""
+    validation_confusion_matrix_url: str = ""
+    validation_diagnostics_plot_url: str = ""
     error_plot_url: str = ""
     training_history: TrainingHistoryPayload = Field(default_factory=TrainingHistoryPayload)
 

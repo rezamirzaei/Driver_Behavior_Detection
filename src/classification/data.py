@@ -10,7 +10,14 @@ from typing import Any, Dict, List, Optional, cast
 import numpy as np
 import pandas as pd
 
-from src.data.event_counts import count_event_starts, count_threshold_events
+from src.data.event_counts import (
+    ACCEL_THRESHOLD,
+    BRAKE_THRESHOLD,
+    SHARP_TURN_THRESHOLD,
+    TURN_THRESHOLD,
+    count_event_starts,
+    count_threshold_events,
+)
 from src.data.sample_models import (
     BehaviorType,
     ClassificationFeatureValuesSample,
@@ -211,11 +218,10 @@ def extract_raw_features(trip_path: Path) -> Dict[str, Any]:
         features["jerk_magnitude_std"] = jerk_mag.std()
 
         # Event-like features from thresholds: count contiguous events, not raw samples.
-        features["brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=-0.1, direction="below")
-        features["hard_brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=-0.3, direction="below")
-        features["accel_count"] = count_threshold_events(acc["acc_x_kf"], threshold=0.1, direction="above")
-        features["turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > 0.1)
-        features["sharp_turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > 0.3)
+        features["brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=BRAKE_THRESHOLD, direction="below")
+        features["accel_count"] = count_threshold_events(acc["acc_x_kf"], threshold=ACCEL_THRESHOLD, direction="above")
+        features["turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > TURN_THRESHOLD)
+        features["sharp_turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > SHARP_TURN_THRESHOLD)
 
         # Normalized event rates (events per second)
         duration = features.get("trip_duration", 0)
@@ -309,7 +315,11 @@ def load_or_build_dataset(
     df = build_raw_dataset(trips)
 
     if cache_path:
-        df.to_csv(cache_path, index=False)
-        print(f"💾 Saved to: {cache_path}")
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(cache_path, index=False)
+            print(f"💾 Saved to: {cache_path}")
+        except OSError as exc:
+            print(f"⚠️ Could not write cache to {cache_path}: {exc}. Continuing without cache persistence.")
 
     return df

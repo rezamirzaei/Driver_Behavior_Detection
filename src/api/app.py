@@ -247,8 +247,9 @@ def run_custom_learning(
     request: CustomLearningRequest,
     service: AnalyticsService = Depends(require_service),
 ) -> CustomLearningResponse:
-    """Train classification model on selected feature subset and return diagnostics."""
-    payload = service.custom_classification_learning(
+    """Train selected model on selected feature subset and return diagnostics."""
+    payload = service.custom_learning(
+        task=request.task,
         model_name=request.model_name,
         feature_names=request.feature_names,
     )

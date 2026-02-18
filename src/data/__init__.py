@@ -1,6 +1,14 @@
 """Data module exports."""
 
 from src.data.epa_loader import EPADataLoader, load_epa_fuel_economy
+from src.data.event_counts import (
+    ACCEL_THRESHOLD,
+    BRAKE_THRESHOLD,
+    SHARP_TURN_THRESHOLD,
+    TURN_THRESHOLD,
+    count_event_starts,
+    count_threshold_events,
+)
 from src.data.raw_loader import (
     build_raw_dataset,
     compute_acceleration_magnitude,
@@ -59,4 +67,12 @@ __all__ = [
     "ClassificationFeatureValuesSample",
     "ClassificationTripSample",
     "EPAVehicleSample",
+    # Event counting utilities
+    "count_event_starts",
+    "count_threshold_events",
+    # Threshold constants
+    "BRAKE_THRESHOLD",
+    "ACCEL_THRESHOLD",
+    "TURN_THRESHOLD",
+    "SHARP_TURN_THRESHOLD",
 ]

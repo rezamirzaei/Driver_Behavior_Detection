@@ -60,6 +60,11 @@ class TestTwoFeatureRequest:
 
 
 class TestModelRequest:
+    def test_classification_features_exclude_removed_hard_brake_count(self) -> None:
+        features = ALLOWED_FEATURES_BY_TASK["classification"]
+        assert "hard_brake_count" not in features
+        assert "hard_break_count" not in features
+
     def test_classification_models_include_notebook_set(self) -> None:
         models = ALLOWED_MODELS_BY_TASK["classification"]
         assert len(models) >= 18
@@ -100,6 +105,14 @@ class TestSpecializedModelRequests:
                 model_name=_first_model("classification"),
                 feature_names=["not_a_real_feature"],
             )
+
+    def test_custom_learning_request_accepts_regression(self) -> None:
+        req = CustomLearningRequest(
+            task="regression",
+            model_name=_first_model("regression"),
+            feature_names=ALLOWED_FEATURES_BY_TASK["regression"][:3],
+        )
+        assert req.task == "regression"
 
 
 class TestResponseModels:
@@ -212,6 +225,20 @@ class TestResponseModels:
         )
         assert payload.task == "classification"
         assert payload.selected_features[0].name == "speed_mean"
+
+    def test_custom_learning_response_for_regression(self) -> None:
+        payload = CustomLearningResponse(
+            task="regression",
+            model_name="Ridge (L2)",
+            selected_features=[FeatureInfo(name="year", description="Model year", is_numeric=True, source_type="raw")],
+            train_metrics={"r2": 0.8},
+            validation_metrics={"r2": 0.75},
+            explanation="ok",
+            validation_diagnostics_plot_url="data:image/png;base64,abc",
+            error_plot_url="data:image/png;base64,abc",
+        )
+        assert payload.task == "regression"
+        assert payload.validation_diagnostics_plot_url
 
     def test_health_response(self) -> None:
         health = HealthResponse(status="ok", version="2.0.0", tasks_loaded={"classification": True, "regression": True})

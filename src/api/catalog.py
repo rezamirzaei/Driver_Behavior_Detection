@@ -35,11 +35,12 @@ DEFAULT_CLASSIFICATION_FEATURES: List[str] = [
     "jerk_x_std",
     "jerk_y_std",
     "brake_count",
-    "hard_brake_count",
     "accel_count",
     "turn_count",
     "sharp_turn_count",
 ]
+
+REMOVED_CLASSIFICATION_FEATURES = {"hard_brake_count", "hard_break_count"}
 
 DEFAULT_REGRESSION_BASE_FEATURES: List[str] = [
     "year",
@@ -118,7 +119,6 @@ FEATURE_DESCRIPTIONS_CLASSIFICATION: Dict[str, str] = {
     "jerk_x_std": "Variation in longitudinal jerk (acceleration change rate).",
     "jerk_y_std": "Variation in lateral jerk.",
     "brake_count": "Count of braking events (contiguous threshold crossings) from longitudinal acceleration.",
-    "hard_brake_count": "Count of hard-braking events with stronger negative acceleration threshold crossings.",
     "accel_count": "Count of acceleration events (contiguous positive threshold crossings).",
     "turn_count": "Count of turning events from contiguous lateral acceleration threshold crossings.",
     "sharp_turn_count": "Count of sharp-turn events from stronger lateral acceleration threshold crossings.",
@@ -172,7 +172,11 @@ class TaskCatalog(BaseModel):
 def _load_classification_features(classification_csv: Path) -> Tuple[List[str], List[str]]:
     if classification_csv.exists():
         df = pd.read_csv(classification_csv, nrows=10)
-        feature_cols = [col for col in df.columns if col not in {"driver", "behavior", "road_type"}]
+        feature_cols = [
+            col
+            for col in df.columns
+            if col not in {"driver", "behavior", "road_type"} and col not in REMOVED_CLASSIFICATION_FEATURES
+        ]
         numeric_cols = [col for col in feature_cols if pd.api.types.is_numeric_dtype(df[col])]
         return feature_cols, numeric_cols
 

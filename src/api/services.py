@@ -44,6 +44,8 @@ from src.visualization.plots import (
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", message=".*Intel OpenMP.*", category=RuntimeWarning)
 
+REMOVED_CLASSIFICATION_COLUMNS = {"hard_brake_count", "hard_break_count"}
+
 
 @dataclass
 class TaskRuntime:
@@ -83,17 +85,33 @@ class AnalyticsService:
 
     @staticmethod
     def _looks_like_legacy_event_counts(df: pd.DataFrame) -> bool:
-        """Detect likely legacy caches where event counts stored sample totals."""
-        required_columns = {"hard_brake_count", "trip_duration"}
+        """Detect likely legacy caches where event counts need recalculation.
+
+        This detects legacy caches where event counts stored sample totals
+        (e.g., rates > 0.5 events/second), which indicates a pre-event-start-count
+        extraction bug.
+        """
+        required_columns = {"trip_duration", "brake_count"}
         if not required_columns.issubset(df.columns):
             return False
 
         duration = pd.to_numeric(df["trip_duration"], errors="coerce").replace(0, np.nan).abs()
-        hard_brakes = pd.to_numeric(df["hard_brake_count"], errors="coerce").fillna(0.0)
-        rate = (hard_brakes / duration).replace([np.inf, -np.inf], np.nan).dropna()
-        if rate.empty:
-            return False
-        return bool(rate.median() > 0.5)
+        brake_count = pd.to_numeric(df["brake_count"], errors="coerce").fillna(0.0)
+
+        # Check for suspiciously high rates (legacy sample counts)
+        rate = (brake_count / duration).replace([np.inf, -np.inf], np.nan).dropna()
+        if not rate.empty and bool(rate.median() > 0.5):
+            return True
+
+        return False
+
+    @staticmethod
+    def _sanitize_classification_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+        """Drop deprecated/corrupted classification columns from runtime datasets."""
+        legacy_cols = [name for name in REMOVED_CLASSIFICATION_COLUMNS if name in df.columns]
+        if not legacy_cols:
+            return df
+        return df.drop(columns=legacy_cols)
 
     def _load_classification_runtime(self) -> TaskRuntime:
         catalog = self.catalogs["classification"]
@@ -103,6 +121,7 @@ class AnalyticsService:
         if cache_path.exists():
             df = pd.read_csv(cache_path)
             df = validate_dataframe_records(df, ClassificationTripSample, strict=False, context="classification_cache")
+            df = self._sanitize_classification_dataframe(df)
             if self._looks_like_legacy_event_counts(df):
                 logger.warning(
                     "Classification cache appears to use legacy sample-based event counts; rebuilding from raw data."
@@ -115,10 +134,12 @@ class AnalyticsService:
                     strict=False,
                     context="classification_cache_rebuild",
                 )
+                df = self._sanitize_classification_dataframe(df)
         else:
             raw_dir = self.settings.resolve_path(self.settings.classification_raw_dir)
             df = load_or_build_dataset(data_dir=raw_dir, cache_path=cache_path)
             df = validate_dataframe_records(df, ClassificationTripSample, strict=False, context="classification_raw")
+            df = self._sanitize_classification_dataframe(df)
 
         if "behavior" not in df.columns or "driver" not in df.columns:
             raise ValueError("Classification dataset must include 'behavior' and 'driver' columns")
@@ -174,14 +195,23 @@ class AnalyticsService:
         catalog = self.catalogs["regression"]
         cache_path = self.settings.resolve_path(self.settings.regression_cache_csv)
 
+        def _load_epa_dataframe(context: str) -> pd.DataFrame:
+            dataset = load_epa_fuel_economy(sample_size=5000, random_state=self.settings.random_state)
+            frame = pd.DataFrame(dataset.X).copy()
+            frame["comb08"] = dataset.y
+            return validate_dataframe_records(frame, EPAVehicleSample, strict=False, context=context)
+
         if cache_path.exists():
             df = pd.read_csv(cache_path)
             df = validate_dataframe_records(df, EPAVehicleSample, strict=False, context="regression_cache")
+            if df.empty:
+                logger.warning(
+                    "Regression cache '%s' yielded zero valid rows; rebuilding from raw EPA dataset.",
+                    cache_path,
+                )
+                df = _load_epa_dataframe(context="regression_cache_fallback")
         else:
-            dataset = load_epa_fuel_economy(sample_size=5000, random_state=self.settings.random_state)
-            df = pd.DataFrame(dataset.X).copy()
-            df["comb08"] = dataset.y
-            df = validate_dataframe_records(df, EPAVehicleSample, strict=False, context="regression_raw")
+            df = _load_epa_dataframe(context="regression_raw")
 
         if "comb08" not in df.columns:
             raise ValueError("Regression dataset must include 'comb08' target column")
@@ -562,6 +592,17 @@ class AnalyticsService:
             "f1_score": round(metrics.f1_score, 4),
         }
 
+    @staticmethod
+    def _regression_metrics_payload(metrics: RegressionMetrics) -> Dict[str, float]:
+        payload = {
+            "r2": round(metrics.r2, 4),
+            "rmse": round(metrics.rmse, 4),
+            "mae": round(metrics.mae, 4),
+        }
+        if metrics.mape is not None:
+            payload["mape"] = round(metrics.mape, 4)
+        return payload
+
     def classification_confusion_matrix(
         self,
         model_name: str,
@@ -645,6 +686,108 @@ class AnalyticsService:
             "error_plot_url": self.figure_to_data_url(history_fig),
             "training_history": self._history_payload(trained.history),
         }
+
+    def _regression_split_for_features(
+        self,
+        feature_names: List[str],
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        runtime = self._runtime("regression")
+        missing = [feature for feature in feature_names if feature not in runtime.feature_columns]
+        if missing:
+            raise ValueError(f"Selected feature(s) not available: {', '.join(missing)}")
+
+        data = runtime.dataframe.copy()
+        X = data[feature_names].copy()
+        y = data["comb08"].astype(float).copy()
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=self.settings.test_size,
+            random_state=self.settings.random_state,
+        )
+
+        split_data = SplitData(
+            X_train=X_train,
+            X_test=X_test,
+            y_train=y_train,
+            y_test=y_test,
+            feature_names=feature_names,
+            target_name="comb08",
+        )
+        train_features, test_features = preprocess_features(split_data, scaler_type="robust")
+        return (
+            np.asarray(train_features.X),
+            np.asarray(test_features.X),
+            np.asarray(y_train),
+            np.asarray(y_test),
+        )
+
+    def custom_regression_learning(
+        self,
+        model_name: str,
+        feature_names: List[str],
+    ) -> Dict[str, Any]:
+        unique_features = list(dict.fromkeys(feature_names))
+        if not unique_features:
+            raise ValueError("At least one feature must be selected.")
+
+        X_train, X_test, y_train, y_test = self._regression_split_for_features(unique_features)
+        model = self._build_model("regression", model_name)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            trained = train_model(
+                X_train,
+                y_train,
+                model,
+                model_name,
+                X_val=X_test,
+                y_val=y_test,
+                n_iterations=self.settings.training_history_iterations,
+                feature_names=unique_features,
+            )
+
+        train_metrics = evaluate_regressor(trained.model, X_train, y_train)
+        validation_metrics = evaluate_regressor(trained.model, X_test, y_test)
+        validation_pred = trained.model.predict(X_test)
+
+        diagnostics_fig = plot_residual_analysis(
+            y_test,
+            np.asarray(validation_pred),
+            model_name=model_name,
+            r2=validation_metrics.r2,
+        )
+        history_fig = plot_training_error_history(
+            trained.history,
+            title=f"{model_name} - Train/Validation Error by Iteration",
+        )
+
+        feature_lookup = {item["name"]: item for item in self.list_feature_payload("regression")}
+        selected_feature_payload = [feature_lookup[name] for name in unique_features if name in feature_lookup]
+
+        explanation = (
+            f"Trained {model_name} using {len(unique_features)} selected feature(s). "
+            f"Validation R2={validation_metrics.r2:.4f}, RMSE={validation_metrics.rmse:.4f}, "
+            f"MAE={validation_metrics.mae:.4f}."
+        )
+
+        return {
+            "task": "regression",
+            "model_name": model_name,
+            "selected_features": selected_feature_payload,
+            "train_metrics": self._regression_metrics_payload(train_metrics),
+            "validation_metrics": self._regression_metrics_payload(validation_metrics),
+            "explanation": explanation,
+            "validation_diagnostics_plot_url": self.figure_to_data_url(diagnostics_fig),
+            "error_plot_url": self.figure_to_data_url(history_fig),
+            "training_history": self._history_payload(trained.history),
+        }
+
+    def custom_learning(self, task: TaskType, model_name: str, feature_names: List[str]) -> Dict[str, Any]:
+        if task == "classification":
+            return self.custom_classification_learning(model_name=model_name, feature_names=feature_names)
+        return self.custom_regression_learning(model_name=model_name, feature_names=feature_names)
 
     def regression_diagnostics(
         self,

@@ -184,7 +184,7 @@ def generate_classification_figures():
     # Figure 5: Correlation Matrix (only valid features)
     print("  Figure 5: Correlation Matrix")
     # Filter out event counts and features with no variance
-    exclude = ['hard_brake_count', 'sharp_turn_count', 'brake_count', 'turn_count']
+    exclude = ['sharp_turn_count', 'brake_count', 'turn_count']
     valid_features = [c for c in feature_cols if c not in exclude and df[c].std() > 0 and df[c].notna().sum() > 0]
     plot_correlation_matrix(df, valid_features, save_path=FIGURES_DIR / 'correlation_matrix_classification.png')
 
@@ -467,4 +467,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

@@ -16,7 +16,7 @@
         ];
 
         vm.task = "classification";
-        vm.activeTab = "feature";
+        vm.activeTab = "studio";
 
         vm.metadata = null;
         vm.features = [];
@@ -76,6 +76,7 @@
         vm.onFeatureChange = onFeatureChange;
         vm.onModelChange = onModelChange;
         vm.onCustomFeatureChange = onCustomFeatureChange;
+        vm.selectCustomFeatures = selectCustomFeatures;
         vm.renderCell = renderCell;
         vm.runCustomLearning = runCustomLearning;
 
@@ -109,9 +110,6 @@
 
         function onTaskChange() {
             resetTaskScopedState();
-            if (vm.task !== "classification" && vm.activeTab === "custom") {
-                vm.activeTab = "feature";
-            }
             loadTaskData();
         }
 
@@ -136,9 +134,7 @@
                     onFeatureChange();
                     onModelChange();
                     vm.customLearning.modelSelection = vm.modelSelection;
-                    vm.customLearning.selectedFeatures = vm.features.slice(0, 4).map(function (feature) {
-                        return feature.name;
-                    });
+                    selectCustomFeatures(vm.numericFeatures.length ? "numeric" : "all");
                     onCustomFeatureChange();
 
                     if (vm.numericFeatures.length >= 2) {
@@ -184,6 +180,20 @@
                 .filter(function (item) {
                     return item !== null;
                 });
+        }
+
+        function selectCustomFeatures(mode) {
+            if (mode === "clear") {
+                vm.customLearning.selectedFeatures = [];
+                onCustomFeatureChange();
+                return;
+            }
+
+            var source = mode === "numeric" ? vm.numericFeatures : vm.features;
+            vm.customLearning.selectedFeatures = (source || []).slice(0, 12).map(function (feature) {
+                return feature.name;
+            });
+            onCustomFeatureChange();
         }
 
         function runFeatureAnalysis() {
@@ -316,10 +326,6 @@
         }
 
         function runCustomLearning() {
-            if (vm.task !== "classification") {
-                vm.errors.custom = "Custom learning is available only for classification task.";
-                return;
-            }
             if (!vm.customLearning.modelSelection) {
                 vm.errors.custom = "Select a model for custom learning.";
                 return;
@@ -334,7 +340,7 @@
             vm.results.custom = null;
 
             ApiService.runCustomLearning({
-                task: "classification",
+                task: vm.task,
                 model_name: vm.customLearning.modelSelection,
                 feature_names: vm.customLearning.selectedFeatures
             })

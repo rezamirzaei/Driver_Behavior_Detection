@@ -14,7 +14,14 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from src.data.event_counts import count_event_starts, count_threshold_events
+from src.data.event_counts import (
+    ACCEL_THRESHOLD,
+    BRAKE_THRESHOLD,
+    SHARP_TURN_THRESHOLD,
+    TURN_THRESHOLD,
+    count_event_starts,
+    count_threshold_events,
+)
 from src.data.sample_models import (
     ClassificationFeatureValuesSample,
     ClassificationTripSample,
@@ -338,11 +345,10 @@ def extract_raw_features(trip_path: Path) -> Optional[Dict]:
         features["jerk_y_std"] = jerk_y.std()
 
         # Threshold-driven events: count event starts instead of sample totals.
-        features["brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=-0.1, direction="below")
-        features["hard_brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=-0.3, direction="below")
-        features["accel_count"] = count_threshold_events(acc["acc_x_kf"], threshold=0.1, direction="above")
-        features["turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > 0.1)
-        features["sharp_turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > 0.3)
+        features["brake_count"] = count_threshold_events(acc["acc_x_kf"], threshold=BRAKE_THRESHOLD, direction="below")
+        features["accel_count"] = count_threshold_events(acc["acc_x_kf"], threshold=ACCEL_THRESHOLD, direction="above")
+        features["turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > TURN_THRESHOLD)
+        features["sharp_turn_count"] = count_event_starts(acc["acc_y_kf"].abs() > SHARP_TURN_THRESHOLD)
 
     # Event-based features (from EVENTS_INERTIAL.txt)
     if events is not None and len(events) > 0:

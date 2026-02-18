@@ -24,33 +24,50 @@ body {
     radial-gradient(circle at 85% 10%, rgba(242, 159, 103, 0.16), transparent 30%),
     var(--bg);
     min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 280px;
+    background: linear-gradient(120deg, var(--hero-a), var(--hero-b) 60%, var(--hero-c));
+    z-index: -2;
+    pointer-events: none;
+}
+
+body::after {
+    content: "";
+    position: fixed;
+    top: 10px;
+    right: -30px;
+    width: 220px;
+    height: 220px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    z-index: -1;
+    pointer-events: none;
 }
 
 .hero {
     background: transparent;
     color: #f8fafc;
-    padding: 2.5rem 1.5rem 3rem;
+    padding: 2.2rem 1.5rem 2.2rem;
     position: relative;
-    overflow: hidden;
-    isolation: isolate;
+    z-index: 0;
 }
 
 .hero::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(120deg, var(--hero-a), var(--hero-b) 60%, var(--hero-c));
+    content: none;
     z-index: -2;
 }
 
 .hero::after {
-    content: "";
-    position: absolute;
-    inset: auto -4rem -5rem auto;
-    width: 12rem;
-    height: 12rem;
-    border-radius: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.25);
+    content: none;
     z-index: -1;
 }
 
@@ -88,6 +105,7 @@ h1 {
     gap: 1rem;
     grid-template-columns: 300px minmax(0, 1fr);
     position: relative;
+    z-index: 2;
 }
 
 .panel {
@@ -146,10 +164,40 @@ button.action {
 
 select {
     position: relative;
+    z-index: 4;
 }
 
 .multi-select {
     min-height: 14rem;
+}
+
+.selection-toolbar {
+    display: flex;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+
+button.chip-action {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #f8fbfd;
+    color: var(--ink-soft);
+    font-size: 0.76rem;
+    font-family: inherit;
+    font-weight: 600;
+    padding: 0.28rem 0.55rem;
+    cursor: pointer;
+}
+
+button.chip-action:hover {
+    border-color: var(--accent);
+    color: var(--accent-strong);
+}
+
+.selection-hint {
+    margin-top: 0.45rem;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
 }
 
 button.action {

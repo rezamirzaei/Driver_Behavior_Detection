@@ -9,7 +9,10 @@ import pandas as pd
 
 from src.classification import data as classification_data
 from src.data import raw_loader
-from src.data.event_counts import count_event_starts, count_threshold_events
+from src.data.event_counts import (
+    count_event_starts,
+    count_threshold_events,
+)
 
 
 def test_count_event_starts_counts_contiguous_segments() -> None:
@@ -45,10 +48,11 @@ def test_classification_extract_raw_features_counts_event_starts(monkeypatch) ->
 
     features = classification_data.extract_raw_features(Path("trip"))
     assert features["brake_count"] == 2
-    assert features["hard_brake_count"] == 1
+    assert "hard_brake_count" not in features
     assert features["accel_count"] == 2
     assert features["turn_count"] == 3
-    assert features["sharp_turn_count"] == 1
+    # With SHARP_TURN_THRESHOLD=0.2, values 0.25 (event 1) and 0.35,0.36 (event 2) = 2 events
+    assert features["sharp_turn_count"] == 2
 
 
 def test_raw_loader_extract_raw_features_counts_event_starts(monkeypatch) -> None:
@@ -73,7 +77,8 @@ def test_raw_loader_extract_raw_features_counts_event_starts(monkeypatch) -> Non
 
     features = raw_loader.extract_raw_features(Path("trip"))
     assert features["brake_count"] == 2
-    assert features["hard_brake_count"] == 1
+    assert "hard_brake_count" not in features
     assert features["accel_count"] == 2
     assert features["turn_count"] == 3
-    assert features["sharp_turn_count"] == 1
+    # With SHARP_TURN_THRESHOLD=0.2, values 0.25 (event 1) and 0.35,0.36 (event 2) = 2 events
+    assert features["sharp_turn_count"] == 2

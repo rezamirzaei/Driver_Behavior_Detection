@@ -173,7 +173,6 @@ class ClassificationFeatureValuesSample(DataSampleModel):
     jerk_magnitude_std: Optional[float] = None
 
     brake_count: Optional[int] = Field(default=None, ge=0)
-    hard_brake_count: Optional[int] = Field(default=None, ge=0)
     accel_count: Optional[int] = Field(default=None, ge=0)
     turn_count: Optional[int] = Field(default=None, ge=0)
     sharp_turn_count: Optional[int] = Field(default=None, ge=0)
@@ -261,3 +260,10 @@ class EPAVehicleSample(DataSampleModel):
     phevCity: Optional[float] = None
     phevHwy: Optional[float] = None
     phevComb: Optional[float] = None
+
+    @field_validator("startStop", "phevBlended", "guzzler", mode="before")
+    @classmethod
+    def normalize_binary_string_fields(cls, value: Optional[object]) -> Optional[str]:
+        if value is None:
+            return None
+        return str(value)

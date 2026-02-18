@@ -50,13 +50,13 @@ def test_classification_trip_sample_validates_counts_non_negative() -> None:
         "behavior": "NORMAL",
         "road_type": "SECONDARY",
         "speed_mean": 40.0,
-        "hard_brake_count": 2,
+        "brake_count": 2,
     }
     parsed = ClassificationTripSample.model_validate(payload)
-    assert parsed.hard_brake_count == 2
+    assert parsed.brake_count == 2
 
     with pytest.raises(ValidationError):
-        ClassificationTripSample.model_validate({**payload, "hard_brake_count": -1})
+        ClassificationTripSample.model_validate({**payload, "brake_count": -1})
 
 
 def test_epa_vehicle_sample_requires_valid_target_range() -> None:
