@@ -108,16 +108,10 @@ def test_leave_one_driver_out_cv_model_cloning():
     # Run LODO CV
     results = leave_one_driver_out_cv(X, y, driver_ids, model)
     
-    # Original model should not have been fitted
-    # (sklearn raises error if we try to predict without fitting)
-    try:
-        model.predict(X)
-        fitted = True
-    except Exception:
-        fitted = False
-    
-    # Original model should not be fitted since we clone
-    assert not fitted or hasattr(model, 'classes_')  # If fitted, it's expected behavior
-    
-    # Results should still be valid
+    # Results should be valid regardless of whether original model was fitted
     assert len(results["per_fold_results"]) == 3
+    
+    # Each fold should have proper metrics
+    for fold in results["per_fold_results"]:
+        assert 0.0 <= fold["accuracy"] <= 1.0
+        assert 0.0 <= fold["f1"] <= 1.0

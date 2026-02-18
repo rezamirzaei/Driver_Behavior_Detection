@@ -5,7 +5,7 @@ This module provides robust cross-validation for driver behavior classification
 by holding out each driver in turn as a test set.
 """
 
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import pandas as pd
 from sklearn.base import BaseEstimator, clone
@@ -17,7 +17,7 @@ def leave_one_driver_out_cv(
     y: pd.Series,
     driver_ids: pd.Series,
     model: BaseEstimator,
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """
     Perform leave-one-driver-out cross-validation.
 
@@ -50,7 +50,7 @@ def leave_one_driver_out_cv(
         >>> print(f"Mean accuracy: {results['mean_accuracy']:.3f}")
     """
     unique_drivers = driver_ids.unique()
-    per_fold_results: List[Dict[str, any]] = []
+    per_fold_results: List[Dict[str, Any]] = []
 
     for driver in unique_drivers:
         # Split data: hold out current driver as test set
