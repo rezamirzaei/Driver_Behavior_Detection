@@ -1,5 +1,10 @@
 # ABAX Data Science Technical Assessment
 
+![CI](https://github.com/rezamirzaei/Driver_Behavior_Detection/actions/workflows/ci.yml/badge.svg)
+![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
+![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 <p align="center">
   <strong>Driver Behavior Classification & Fuel Economy Prediction</strong><br>
   <em>Complete ML pipeline with FastAPI + AngularJS Learning Studio, async jobs, and persistent run history</em>
@@ -415,6 +420,7 @@ All figures are in `results/figures/`:
 | **Quality** | Ruff, MyPy, Pytest, pre-commit, GitHub Actions |
 | **Report** | LaTeX (tectonic compiler) |
 | **Package Management** | uv |
+| **License** | MIT |
 
 ---
 
@@ -488,6 +494,9 @@ cd docs && bash compile_report.sh
 - [x] **Data Caching/Versioning** - Parquet caches with metadata + version manifest
 - [x] **Clean Architecture** - Modular codebase with Pydantic-first contracts
 - [x] **Tests** - API/data/schema/UI-flow tests passing
+- [x] **License** - MIT license for open usage
+- [x] **Test Coverage** - pytest-cov integrated for coverage reporting
+- [x] **LODO Cross-Validation** - Leave-one-driver-out CV for robust accuracy estimates
 
 ---
 
