@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from threading import Lock
 
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 _lock = Lock()
 _applied: set[str] = set()

@@ -4,25 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="af8179b2-3fad-407e-9954-05e19cb2bbad" name="Changes" comment="feat(platform): add Postgres migrations, robust Celery cancel/retry, artifact lifecycle APIs, and containerized e2e coverage">
-      <change beforePath="$PROJECT_DIR$/.dockerignore" beforeDir="false" afterPath="$PROJECT_DIR$/.dockerignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.github/workflows/ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/ci.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/docker_e2e_smoke.sh" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/docker_e2e_smoke.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/migrate_database.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/migrate_database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/run_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/run_repository.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/schemas.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/services.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/services.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_api_contracts.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_api_contracts.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_api_schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_api_schemas.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_run_repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_run_repository.py" afterDir="false" />
-    </list>
+    <list default="true" id="af8179b2-3fad-407e-9954-05e19cb2bbad" name="Changes" comment="chore: stabilize pre-commit hooks and apply formatting cleanups" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -156,7 +138,7 @@
       <workItem from="1770404065957" duration="1261000" />
       <workItem from="1771353980598" duration="1232000" />
       <workItem from="1771357643237" duration="7241000" />
-      <workItem from="1771371031559" duration="13256000" />
+      <workItem from="1771371031559" duration="13594000" />
     </task>
     <task id="LOCAL-00001" summary="first commit, classification for UAH data and regression for EDA data">
       <option name="closed" value="true" />
@@ -334,7 +316,23 @@
       <option name="project" value="LOCAL" />
       <updated>1771385385757</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="add Alembic migrations, API auth/quota, drift alert automation, and slim Docker runtime">
+      <option name="closed" value="true" />
+      <created>1771386885178</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1771386885179</updated>
+    </task>
+    <task id="LOCAL-00024" summary="chore: stabilize pre-commit hooks and apply formatting cleanups">
+      <option name="closed" value="true" />
+      <created>1771387094156</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1771387094157</updated>
+    </task>
+    <option name="localTasksCounter" value="25" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -359,7 +357,9 @@
     <MESSAGE value="feat: harden data pipeline and upgrade Learning Studio with async cached training" />
     <MESSAGE value="feat: add persistent run cache/history, celery-ready async jobs, observability, and enhanced learning studio" />
     <MESSAGE value="feat(platform): add Postgres migrations, robust Celery cancel/retry, artifact lifecycle APIs, and containerized e2e coverage" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat(platform): add Postgres migrations, robust Celery cancel/retry, artifact lifecycle APIs, and containerized e2e coverage" />
+    <MESSAGE value="add Alembic migrations, API auth/quota, drift alert automation, and slim Docker runtime" />
+    <MESSAGE value="chore: stabilize pre-commit hooks and apply formatting cleanups" />
+    <option name="LAST_COMMIT_MESSAGE" value="chore: stabilize pre-commit hooks and apply formatting cleanups" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
