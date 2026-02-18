@@ -6,17 +6,14 @@
   <component name="ChangeListManager">
     <list default="true" id="af8179b2-3fad-407e-9954-05e19cb2bbad" name="Changes" comment="unify model registry, enforce Pydantic contracts, and add per-iteration train/validation error diagnostics">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/catalog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/catalog.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/schemas.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/services.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/services.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/static/css/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/static/css/styles.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/static/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/static/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/static/js/controllers/dashboard.controller.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/static/js/controllers/dashboard.controller.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/api/static/js/services/api.service.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/static/js/services/api.service.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/classification/data.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/classification/data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/epa_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/epa_loader.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/data/raw_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/raw_loader.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_api_schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_api_schemas.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/uah_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/uah_loader.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -151,7 +148,7 @@
       <workItem from="1770404065957" duration="1261000" />
       <workItem from="1771353980598" duration="1232000" />
       <workItem from="1771357643237" duration="7241000" />
-      <workItem from="1771371031559" duration="2231000" />
+      <workItem from="1771371031559" duration="3044000" />
     </task>
     <task id="LOCAL-00001" summary="first commit, classification for UAH data and regression for EDA data">
       <option name="closed" value="true" />
@@ -265,7 +262,23 @@
       <option name="project" value="LOCAL" />
       <updated>1771372748236</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="unify model registry, enforce Pydantic contracts, and add per-iteration train/validation error diagnostics">
+      <option name="closed" value="true" />
+      <created>1771373788966</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1771373788966</updated>
+    </task>
+    <task id="LOCAL-00016" summary="unify model registry, enforce Pydantic contracts, and add per-iteration train/validation error diagnostics">
+      <option name="closed" value="true" />
+      <created>1771373908921</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1771373908921</updated>
+    </task>
+    <option name="localTasksCounter" value="17" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

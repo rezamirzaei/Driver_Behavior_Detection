@@ -26,7 +26,9 @@ from src.api.config import AppSettings
 from src.api.model_registry import ModelRegistry
 from src.core.schemas import ClassificationMetrics, RegressionMetrics, SplitData, TrainingHistory
 from src.data.epa_loader import load_epa_fuel_economy
+from src.data.sample_models import ClassificationTripSample, EPAVehicleSample
 from src.data.splitter import split_by_driver
+from src.data.validation import validate_dataframe_records
 from src.features.analysis import analyze_correlations, compute_feature_statistics
 from src.features.preprocessing import engineer_regression_features, preprocess_features
 from src.models.evaluation import evaluate_classifier, evaluate_regressor
@@ -100,15 +102,23 @@ class AnalyticsService:
 
         if cache_path.exists():
             df = pd.read_csv(cache_path)
+            df = validate_dataframe_records(df, ClassificationTripSample, strict=False, context="classification_cache")
             if self._looks_like_legacy_event_counts(df):
                 logger.warning(
                     "Classification cache appears to use legacy sample-based event counts; rebuilding from raw data."
                 )
                 raw_dir = self.settings.resolve_path(self.settings.classification_raw_dir)
                 df = load_or_build_dataset(data_dir=raw_dir, cache_path=cache_path, force_rebuild=True)
+                df = validate_dataframe_records(
+                    df,
+                    ClassificationTripSample,
+                    strict=False,
+                    context="classification_cache_rebuild",
+                )
         else:
             raw_dir = self.settings.resolve_path(self.settings.classification_raw_dir)
             df = load_or_build_dataset(data_dir=raw_dir, cache_path=cache_path)
+            df = validate_dataframe_records(df, ClassificationTripSample, strict=False, context="classification_raw")
 
         if "behavior" not in df.columns or "driver" not in df.columns:
             raise ValueError("Classification dataset must include 'behavior' and 'driver' columns")
@@ -166,10 +176,12 @@ class AnalyticsService:
 
         if cache_path.exists():
             df = pd.read_csv(cache_path)
+            df = validate_dataframe_records(df, EPAVehicleSample, strict=False, context="regression_cache")
         else:
             dataset = load_epa_fuel_economy(sample_size=5000, random_state=self.settings.random_state)
             df = pd.DataFrame(dataset.X).copy()
             df["comb08"] = dataset.y
+            df = validate_dataframe_records(df, EPAVehicleSample, strict=False, context="regression_raw")
 
         if "comb08" not in df.columns:
             raise ValueError("Regression dataset must include 'comb08' target column")

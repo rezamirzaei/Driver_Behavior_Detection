@@ -13,8 +13,20 @@ from src.data.raw_loader import (
     load_semantic_online,
     summarize_events,
 )
+from src.data.sample_models import (
+    ClassificationFeatureValuesSample,
+    ClassificationTripSample,
+    EPAVehicleSample,
+    TripInfoSample,
+    UAHInertialEventSample,
+    UAHRawAccelerometerSample,
+    UAHRawGPSSample,
+    UAHSemanticSummarySample,
+    UAHTripSummarySample,
+)
 from src.data.splitter import split_by_driver, split_data
 from src.data.uah_loader import UAHDataLoader, load_uah_driveset
+from src.data.validation import validate_dataframe_records, validate_record, validate_records
 
 __all__ = [
     "UAHDataLoader",
@@ -34,4 +46,17 @@ __all__ = [
     "get_feature_columns",
     "compute_acceleration_magnitude",
     "summarize_events",
+    # Validation and sample schemas
+    "validate_record",
+    "validate_records",
+    "validate_dataframe_records",
+    "TripInfoSample",
+    "UAHRawGPSSample",
+    "UAHRawAccelerometerSample",
+    "UAHInertialEventSample",
+    "UAHSemanticSummarySample",
+    "UAHTripSummarySample",
+    "ClassificationFeatureValuesSample",
+    "ClassificationTripSample",
+    "EPAVehicleSample",
 ]

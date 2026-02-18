@@ -15,6 +15,15 @@ import numpy as np
 import pandas as pd
 
 from src.data.event_counts import count_event_starts, count_threshold_events
+from src.data.sample_models import (
+    ClassificationFeatureValuesSample,
+    ClassificationTripSample,
+    TripInfoSample,
+    UAHInertialEventSample,
+    UAHRawAccelerometerSample,
+    UAHRawGPSSample,
+)
+from src.data.validation import validate_dataframe_records, validate_record
 
 
 def get_all_trips(data_dir: Path) -> List[Dict]:
@@ -51,7 +60,18 @@ def get_all_trips(data_dir: Path) -> List[Dict]:
                     road_type = part
 
             if behavior:
-                trips.append({"driver": driver, "behavior": behavior, "road_type": road_type, "path": trip_folder})
+                trip = validate_record(
+                    {
+                        "driver": driver,
+                        "behavior": behavior,
+                        "road_type": road_type,
+                        "path": trip_folder,
+                    },
+                    TripInfoSample,
+                    strict=True,
+                    context=f"trip_info:{trip_folder.name}",
+                )
+                trips.append(trip)
 
     return trips
 
@@ -83,7 +103,12 @@ def load_raw_gps(trip_path: Path) -> Optional[pd.DataFrame]:
     try:
         df = pd.read_csv(gps_file, sep=r"\s+", header=None, usecols=range(9))
         df.columns = cols
-        return df
+        return validate_dataframe_records(
+            df,
+            UAHRawGPSSample,
+            strict=False,
+            context=f"RAW_GPS:{trip_path.name}",
+        )
     except Exception as e:
         warnings.warn(f"Error loading GPS from {gps_file}: {e}")
         return None
@@ -127,7 +152,12 @@ def load_raw_accelerometer(trip_path: Path) -> Optional[pd.DataFrame]:
     try:
         df = pd.read_csv(acc_file, sep=r"\s+", header=None, usecols=range(11))
         df.columns = cols
-        return df
+        return validate_dataframe_records(
+            df,
+            UAHRawAccelerometerSample,
+            strict=False,
+            context=f"RAW_ACCELEROMETERS:{trip_path.name}",
+        )
     except Exception as e:
         warnings.warn(f"Error loading accelerometer from {acc_file}: {e}")
         return None
@@ -162,7 +192,12 @@ def load_inertial_events(trip_path: Path) -> Optional[pd.DataFrame]:
         # Map event types and levels to names
         df["event_name"] = df["event_type"].map({1: "braking", 2: "turning", 3: "acceleration"})
         df["level_name"] = df["level"].map({1: "low", 2: "medium", 3: "high"})
-        return df
+        return validate_dataframe_records(
+            df,
+            UAHInertialEventSample,
+            strict=False,
+            context=f"EVENTS_INERTIAL:{trip_path.name}",
+        )
     except Exception as e:
         warnings.warn(f"Error loading events from {events_file}: {e}")
         return None
@@ -326,7 +361,12 @@ def extract_raw_features(trip_path: Path) -> Optional[Dict]:
             for level in ["low", "medium", "high"]:
                 features[f"event_{event_type}_{level}"] = 0
 
-    return features
+    return validate_record(
+        features,
+        ClassificationFeatureValuesSample,
+        strict=True,
+        context=f"raw_features:{trip_path.name}",
+    )
 
 
 def build_raw_dataset(trips: List[Dict]) -> pd.DataFrame:
@@ -346,12 +386,19 @@ def build_raw_dataset(trips: List[Dict]) -> pd.DataFrame:
         if features is None:
             continue
 
-        # Add metadata
-        features["driver"] = trip["driver"]
-        features["behavior"] = trip["behavior"]
-        features["road_type"] = trip["road_type"]
+        row = validate_record(
+            {
+                **features,
+                "driver": trip["driver"],
+                "behavior": trip["behavior"],
+                "road_type": trip["road_type"],
+            },
+            ClassificationTripSample,
+            strict=True,
+            context=f"raw_trip:{Path(trip['path']).name}",
+        )
 
-        all_data.append(features)
+        all_data.append(row)
 
     return pd.DataFrame(all_data)
 

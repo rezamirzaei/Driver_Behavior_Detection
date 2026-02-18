@@ -28,6 +28,8 @@ import warnings
 import pandas as pd
 
 from src.core.schemas import Dataset, DatasetInfo
+from src.data.sample_models import UAHSemanticSummarySample, UAHTripSummarySample
+from src.data.validation import validate_record
 
 
 class UAHDataLoader:
@@ -108,7 +110,13 @@ class UAHDataLoader:
                 "ratio_aggressive": last_row.get("ratio_aggressive", 0),
             }
 
-            return pd.Series(features)
+            validated = validate_record(
+                features,
+                UAHSemanticSummarySample,
+                strict=True,
+                context=f"semantic_summary:{trip_folder.name}",
+            )
+            return pd.Series(validated)
 
         except Exception as e:
             warnings.warn(f"Failed to load {semantic_file}: {e}")
@@ -177,10 +185,18 @@ class UAHDataLoader:
                 # Load trip summary
                 trip_data = self.load_trip_summary(trip_folder)
                 if trip_data is not None:
-                    trip_data["driver"] = driver
-                    trip_data["behavior"] = behavior
-                    trip_data["road_type"] = road_type
-                    all_data.append(trip_data)
+                    row = validate_record(
+                        {
+                            **trip_data.to_dict(),
+                            "driver": driver,
+                            "behavior": behavior,
+                            "road_type": road_type,
+                        },
+                        UAHTripSummarySample,
+                        strict=True,
+                        context=f"uah_trip_summary:{trip_folder.name}",
+                    )
+                    all_data.append(row)
 
         if not all_data:
             raise ValueError("No data found matching the specified criteria.")

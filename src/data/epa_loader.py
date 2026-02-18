@@ -7,6 +7,8 @@ from typing import Optional
 import pandas as pd
 
 from src.core.schemas import Dataset, DatasetInfo
+from src.data.sample_models import EPAVehicleSample
+from src.data.validation import validate_dataframe_records
 
 
 class EPADataLoader:
@@ -123,6 +125,7 @@ class EPADataLoader:
             df = df.sample(sample_size, random_state=random_state)
 
         df = df.reset_index(drop=True)
+        df = validate_dataframe_records(df, EPAVehicleSample, strict=False, context="epa_dataset")
 
         # Separate features and target
         feature_cols = [c for c in df.columns if c != target_col]

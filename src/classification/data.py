@@ -4,24 +4,28 @@ Raw Data Loading and Feature Extraction Module.
 Clean, reusable functions for loading UAH-DriveSet data.
 """
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 import pandas as pd
 
 from src.data.event_counts import count_event_starts, count_threshold_events
+from src.data.sample_models import (
+    BehaviorType,
+    ClassificationFeatureValuesSample,
+    ClassificationTripSample,
+    RoadType,
+    TripInfoSample,
+    UAHInertialEventSample,
+    UAHRawAccelerometerSample,
+    UAHRawGPSSample,
+)
+from src.data.validation import validate_dataframe_records, validate_record
 
 
-@dataclass
-class TripInfo:
+class TripInfo(TripInfoSample):
     """Container for trip metadata."""
-
-    path: Path
-    driver: str
-    behavior: str
-    road_type: str
 
 
 def get_all_trips(data_dir: Path) -> List[TripInfo]:
@@ -57,7 +61,14 @@ def get_all_trips(data_dir: Path) -> List[TripInfo]:
                 if behavior.startswith("NORMAL"):
                     behavior = "NORMAL"
 
-                trips.append(TripInfo(path=trip_dir, driver=driver, behavior=behavior, road_type=road_type))
+                trips.append(
+                    TripInfo(
+                        path=trip_dir,
+                        driver=driver,
+                        behavior=cast(BehaviorType, behavior),
+                        road_type=cast(RoadType, road_type),
+                    )
+                )
 
     return trips
 
@@ -72,7 +83,12 @@ def load_raw_gps(trip_path: Path) -> Optional[pd.DataFrame]:
         df = pd.read_csv(
             gps_file, sep=" ", header=None, names=["timestamp", "lat", "lon", "speed", "course", "altitude"]
         )
-        return df
+        return validate_dataframe_records(
+            df,
+            UAHRawGPSSample,
+            strict=False,
+            context=f"RAW_GPS:{trip_path.name}",
+        )
     except Exception:
         return None
 
@@ -93,7 +109,12 @@ def load_raw_accelerometer(trip_path: Path) -> Optional[pd.DataFrame]:
             ]
         elif len(df.columns) == 7:
             df.columns = ["timestamp", "acc_x", "acc_y", "acc_z", "acc_x_kf", "acc_y_kf", "acc_z_kf"]
-        return df
+        return validate_dataframe_records(
+            df,
+            UAHRawAccelerometerSample,
+            strict=False,
+            context=f"RAW_ACCELEROMETERS:{trip_path.name}",
+        )
     except Exception:
         return None
 
@@ -111,7 +132,12 @@ def load_inertial_events(trip_path: Path) -> Optional[pd.DataFrame]:
             header=None,
             names=["timestamp", "event_code", "event_name", "level_code", "level_name"],
         )
-        return df
+        return validate_dataframe_records(
+            df,
+            UAHInertialEventSample,
+            strict=False,
+            context=f"EVENTS_INERTIAL:{trip_path.name}",
+        )
     except Exception:
         return None
 
@@ -206,7 +232,13 @@ def extract_raw_features(trip_path: Path) -> Dict[str, Any]:
     # similar heuristics to the behavior labels. Using them would create circular logic.
     # Instead, we use raw sensor statistics computed directly above.
 
-    return features
+    validated = validate_record(
+        features,
+        ClassificationFeatureValuesSample,
+        strict=True,
+        context=f"classification_features:{trip_path.name}",
+    )
+    return validated
 
 
 def build_raw_dataset(trips: List[TripInfo], verbose: bool = True) -> pd.DataFrame:
@@ -224,10 +256,18 @@ def build_raw_dataset(trips: List[TripInfo], verbose: bool = True) -> pd.DataFra
 
     for i, trip in enumerate(trips):
         features = extract_raw_features(trip.path)
-        features["driver"] = trip.driver
-        features["behavior"] = trip.behavior
-        features["road_type"] = trip.road_type
-        rows.append(features)
+        row = validate_record(
+            {
+                **features,
+                "driver": trip.driver,
+                "behavior": trip.behavior,
+                "road_type": trip.road_type,
+            },
+            ClassificationTripSample,
+            strict=True,
+            context=f"classification_trip:{trip.path.name}",
+        )
+        rows.append(row)
 
         if verbose and (i + 1) % 10 == 0:
             print(f"  Processed {i + 1}/{len(trips)} trips")
