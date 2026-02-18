@@ -11,8 +11,14 @@ services:
       ABAX_TEST_SIZE: "0.2"
       ABAX_RANDOM_STATE: "42"
       ABAX_CLASSIFICATION_CACHE_CSV: "/tmp/uah_raw_features.parquet"
+      ABAX_ASYNC_JOB_BACKEND: "celery"
+      ABAX_CELERY_BROKER_URL: "redis://redis:6379/0"
+      ABAX_CELERY_RESULT_BACKEND: "redis://redis:6379/1"
     volumes:
       - ./data:/app/data:ro
+      - ./results:/app/results
+    depends_on:
+      - redis
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
@@ -20,3 +26,28 @@ services:
       timeout: 10s
       retries: 3
       start_period: 35s
+
+  abax-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: abax-worker
+    command: ["celery", "-A", "src.api.celery_tasks:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    environment:
+      ABAX_APP_VERSION: "2.0.0"
+      ABAX_TEST_SIZE: "0.2"
+      ABAX_RANDOM_STATE: "42"
+      ABAX_CLASSIFICATION_CACHE_CSV: "/tmp/uah_raw_features.parquet"
+      ABAX_CELERY_BROKER_URL: "redis://redis:6379/0"
+      ABAX_CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+    volumes:
+      - ./data:/app/data:ro
+      - ./results:/app/results
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: abax-redis
+    restart: unless-stopped

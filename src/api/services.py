@@ -30,6 +30,8 @@ from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score, tra
 from src.api.catalog import TaskCatalog, TaskType, build_task_catalogs
 from src.api.config import AppSettings
 from src.api.model_registry import ModelRegistry
+from src.api.observability import ObservabilityRegistry
+from src.api.run_repository import TrainingRunRepository
 from src.core.schemas import ClassificationMetrics, RegressionMetrics, SplitData, TrainingHistory
 from src.data.cache_io import read_dataframe_cache, write_dataframe_cache
 from src.data.epa_loader import load_epa_fuel_economy
@@ -100,6 +102,12 @@ class AnalyticsService:
         self._training_cache: Dict[str, Any] = {}
         self._training_cache_order: List[str] = []
         self._training_cache_lock = Lock()
+        self.run_repository = TrainingRunRepository(self.settings.resolve_path(self.settings.run_store_path))
+        self.observability: Optional[ObservabilityRegistry] = None
+
+    def set_observability(self, registry: ObservabilityRegistry) -> None:
+        """Attach shared observability registry from API app."""
+        self.observability = registry
 
     @staticmethod
     def _looks_like_legacy_event_counts(df: pd.DataFrame) -> bool:
@@ -365,6 +373,56 @@ class AnalyticsService:
                 evicted = self._training_cache_order.pop(0)
                 self._training_cache.pop(evicted, None)
 
+    @staticmethod
+    def _run_metrics_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "train": payload.get("train_metrics", {}),
+            "validation": payload.get("validation_metrics", {}),
+        }
+
+    @staticmethod
+    def _run_cv_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
+        cv_metric_name = str(payload.get("cv_metric_name", ""))
+        if not cv_metric_name:
+            return {}
+        return {
+            "metric_name": cv_metric_name,
+            "scores": payload.get("cv_scores", []),
+            "mean": payload.get("cv_mean"),
+            "std": payload.get("cv_std"),
+        }
+
+    def list_training_runs(self, task: Optional[TaskType], limit: int = 30) -> List[Dict[str, Any]]:
+        """List recent persisted runs for dashboard history."""
+        safe_limit = max(1, min(int(limit), 200))
+        return self.run_repository.list_runs(task=task, limit=safe_limit)
+
+    def get_training_run(self, run_id: str) -> Dict[str, Any]:
+        """Get one persisted run by id."""
+        payload = self.run_repository.get_run(run_id)
+        if payload is None:
+            raise ValueError(f"Run '{run_id}' not found.")
+        return payload
+
+    def _record_training_metric(
+        self,
+        *,
+        operation: str,
+        task: TaskType,
+        model_name: str,
+        duration_ms: float,
+        cache_hit: bool,
+    ) -> None:
+        if self.observability is None:
+            return
+        self.observability.record_training(
+            operation=operation,
+            task=task,
+            model_name=model_name,
+            duration_ms=duration_ms,
+            cache_hit=cache_hit,
+        )
+
     def _artifact_dir(self) -> Path:
         return self.settings.resolve_path("results/model_artifacts")
 
@@ -406,6 +464,7 @@ class AnalyticsService:
                     task,
                     runtime.catalog.feature_sources.get(feature, "processed"),
                 ),
+                "lineage": runtime.catalog.feature_lineage.get(feature, ""),
             }
             for feature in runtime.feature_columns
         ]
@@ -511,6 +570,7 @@ class AnalyticsService:
                 "is_numeric": feature_name in runtime.numeric_feature_columns,
                 "source_type": source_type,
                 "source_summary": self._feature_source_summary(task, source_type),
+                "lineage": runtime.catalog.feature_lineage.get(feature_name, ""),
             },
         )
 
@@ -733,6 +793,13 @@ class AnalyticsService:
         )
         cached = self._cache_get(signature)
         if cached is not None:
+            self._record_training_metric(
+                operation="classification_confusion_matrix",
+                task="classification",
+                model_name=model_name,
+                duration_ms=0.0,
+                cache_hit=True,
+            )
             logger.info("classification_confusion_matrix_completed model=%s cache_hit=true", model_name)
             return cached
 
@@ -766,6 +833,13 @@ class AnalyticsService:
             "classification_confusion_matrix_completed model=%s duration_ms=%.2f cache_hit=false",
             model_name,
             duration_ms,
+        )
+        self._record_training_metric(
+            operation="classification_confusion_matrix",
+            task="classification",
+            model_name=model_name,
+            duration_ms=duration_ms,
+            cache_hit=False,
         )
         return payload
 
@@ -1000,80 +1074,209 @@ class AnalyticsService:
         persist_artifact: bool = False,
         artifact_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        if artifact_id:
-            payload = self._load_artifact_payload(task, artifact_id)
-            payload["artifact_id"] = artifact_id
-            payload["artifact_saved"] = True
-            payload["artifact_path"] = str(self._artifact_file(task, artifact_id))
-            logger.info(
-                "custom_learning_loaded_artifact task=%s model=%s artifact_id=%s",
-                task,
-                model_name,
-                artifact_id,
-            )
-            return payload
-
+        params = {
+            "cv_folds": cv_folds,
+            "test_size": self.settings.test_size,
+            "iterations": self.settings.training_history_iterations,
+            "random_state": self.settings.random_state,
+        }
+        data_version = self._runtime_data_versions.get(task, "unknown")
         signature = self._training_signature(
             operation="custom_learning",
             task=task,
             model_name=model_name,
             feature_names=feature_names,
-            params={
-                "cv_folds": cv_folds,
-                "persist_artifact": persist_artifact,
-                "test_size": self.settings.test_size,
-                "iterations": self.settings.training_history_iterations,
-                "random_state": self.settings.random_state,
-            },
+            params=params,
         )
-        cached = self._cache_get(signature)
-        if cached is not None:
+
+        if artifact_id:
+            signature = hashlib.sha256(f"artifact:{task}:{artifact_id}".encode("utf-8")).hexdigest()
+
+        run_id = self.run_repository.start_run(
+            signature=signature,
+            task=task,
+            operation="custom_learning",
+            model_name=model_name,
+            feature_names=feature_names,
+            params=params,
+            data_version=data_version,
+        )
+        start = time.perf_counter()
+
+        try:
+            if artifact_id:
+                payload = self._load_artifact_payload(task, artifact_id)
+                payload["artifact_id"] = artifact_id
+                payload["artifact_saved"] = True
+                payload["artifact_path"] = str(self._artifact_file(task, artifact_id))
+                duration_ms = (time.perf_counter() - start) * 1000.0
+                self.run_repository.complete_run(
+                    run_id=run_id,
+                    cache_hit=True,
+                    duration_ms=duration_ms,
+                    metrics=self._run_metrics_summary(payload),
+                    cv_summary=self._run_cv_summary(payload),
+                    artifact_id=payload.get("artifact_id", ""),
+                    artifact_path=payload.get("artifact_path", ""),
+                    result_payload=payload,
+                )
+                logger.info(
+                    "custom_learning_loaded_artifact task=%s model=%s artifact_id=%s",
+                    task,
+                    model_name,
+                    artifact_id,
+                )
+                self._record_training_metric(
+                    operation="custom_learning",
+                    task=task,
+                    model_name=model_name,
+                    duration_ms=duration_ms,
+                    cache_hit=True,
+                )
+                return payload
+
+            cached = self._cache_get(signature)
+            if cached is not None:
+                duration_ms = (time.perf_counter() - start) * 1000.0
+                self.run_repository.complete_run(
+                    run_id=run_id,
+                    cache_hit=True,
+                    duration_ms=duration_ms,
+                    metrics=self._run_metrics_summary(cached),
+                    cv_summary=self._run_cv_summary(cached),
+                    artifact_id=cached.get("artifact_id", ""),
+                    artifact_path=cached.get("artifact_path", ""),
+                    result_payload=cached,
+                )
+                logger.info(
+                    "custom_learning_completed task=%s model=%s features=%d cv_folds=%d cache_hit=true",
+                    task,
+                    model_name,
+                    len(feature_names),
+                    cv_folds,
+                )
+                self._record_training_metric(
+                    operation="custom_learning",
+                    task=task,
+                    model_name=model_name,
+                    duration_ms=duration_ms,
+                    cache_hit=True,
+                )
+                return cached
+
+            persisted_cached = self.run_repository.get_cached_result(signature)
+            if persisted_cached is not None:
+                payload = copy.deepcopy(persisted_cached)
+                payload.setdefault("artifact_id", "")
+                payload.setdefault("artifact_saved", False)
+                payload.setdefault("artifact_path", "")
+
+                if persist_artifact and not payload.get("artifact_saved"):
+                    persisted_artifact_id = signature[:16]
+                    artifact_path = self._persist_artifact_payload(task, persisted_artifact_id, payload)
+                    payload["artifact_id"] = persisted_artifact_id
+                    payload["artifact_saved"] = True
+                    payload["artifact_path"] = artifact_path
+
+                self._cache_set(signature, payload)
+                duration_ms = (time.perf_counter() - start) * 1000.0
+                self.run_repository.complete_run(
+                    run_id=run_id,
+                    cache_hit=True,
+                    duration_ms=duration_ms,
+                    metrics=self._run_metrics_summary(payload),
+                    cv_summary=self._run_cv_summary(payload),
+                    artifact_id=payload.get("artifact_id", ""),
+                    artifact_path=payload.get("artifact_path", ""),
+                    result_payload=payload,
+                )
+                logger.info(
+                    "custom_learning_completed task=%s model=%s features=%d cv_folds=%d cache_hit=true cache_source=persistent",
+                    task,
+                    model_name,
+                    len(feature_names),
+                    cv_folds,
+                )
+                self._record_training_metric(
+                    operation="custom_learning",
+                    task=task,
+                    model_name=model_name,
+                    duration_ms=duration_ms,
+                    cache_hit=True,
+                )
+                return payload
+
+            if task == "classification":
+                payload = self.custom_classification_learning(
+                    model_name=model_name,
+                    feature_names=feature_names,
+                    cv_folds=cv_folds,
+                )
+            else:
+                payload = self.custom_regression_learning(
+                    model_name=model_name,
+                    feature_names=feature_names,
+                    cv_folds=cv_folds,
+                )
+
+            payload.setdefault("artifact_id", "")
+            payload.setdefault("artifact_saved", False)
+            payload.setdefault("artifact_path", "")
+
+            if persist_artifact:
+                persisted_artifact_id = signature[:16]
+                artifact_path = self._persist_artifact_payload(task, persisted_artifact_id, payload)
+                payload["artifact_id"] = persisted_artifact_id
+                payload["artifact_saved"] = True
+                payload["artifact_path"] = artifact_path
+
+            self._cache_set(signature, payload)
+            self.run_repository.set_cached_result(
+                signature=signature,
+                task=task,
+                operation="custom_learning",
+                model_name=model_name,
+                feature_names=feature_names,
+                params=params,
+                data_version=data_version,
+                result_payload=payload,
+            )
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            self.run_repository.complete_run(
+                run_id=run_id,
+                cache_hit=False,
+                duration_ms=duration_ms,
+                metrics=self._run_metrics_summary(payload),
+                cv_summary=self._run_cv_summary(payload),
+                artifact_id=payload.get("artifact_id", ""),
+                artifact_path=payload.get("artifact_path", ""),
+                result_payload=payload,
+            )
             logger.info(
-                "custom_learning_completed task=%s model=%s features=%d cv_folds=%d cache_hit=true",
+                "custom_learning_completed task=%s model=%s features=%d cv_folds=%d duration_ms=%.2f cache_hit=false artifact_saved=%s",
                 task,
                 model_name,
                 len(feature_names),
                 cv_folds,
+                duration_ms,
+                bool(payload.get("artifact_saved")),
             )
-            return cached
-
-        start = time.perf_counter()
-        if task == "classification":
-            payload = self.custom_classification_learning(
+            self._record_training_metric(
+                operation="custom_learning",
+                task=task,
                 model_name=model_name,
-                feature_names=feature_names,
-                cv_folds=cv_folds,
+                duration_ms=duration_ms,
+                cache_hit=False,
             )
-        else:
-            payload = self.custom_regression_learning(
-                model_name=model_name,
-                feature_names=feature_names,
-                cv_folds=cv_folds,
+            return payload
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            self.run_repository.fail_run(
+                run_id=run_id,
+                duration_ms=duration_ms,
+                error=f"{type(exc).__name__}: {exc}",
             )
-
-        payload.setdefault("artifact_id", "")
-        payload.setdefault("artifact_saved", False)
-        payload.setdefault("artifact_path", "")
-
-        if persist_artifact:
-            artifact_id = signature[:16]
-            artifact_path = self._persist_artifact_payload(task, artifact_id, payload)
-            payload["artifact_id"] = artifact_id
-            payload["artifact_saved"] = True
-            payload["artifact_path"] = artifact_path
-
-        self._cache_set(signature, payload)
-        duration_ms = (time.perf_counter() - start) * 1000.0
-        logger.info(
-            "custom_learning_completed task=%s model=%s features=%d cv_folds=%d duration_ms=%.2f cache_hit=false artifact_saved=%s",
-            task,
-            model_name,
-            len(feature_names),
-            cv_folds,
-            duration_ms,
-            bool(payload.get("artifact_saved")),
-        )
-        return payload
+            raise
 
     def regression_diagnostics(
         self,
@@ -1092,6 +1295,13 @@ class AnalyticsService:
         )
         cached = self._cache_get(signature)
         if cached is not None:
+            self._record_training_metric(
+                operation="regression_diagnostics",
+                task="regression",
+                model_name=model_name,
+                duration_ms=0.0,
+                cache_hit=True,
+            )
             logger.info("regression_diagnostics_completed model=%s cache_hit=true", model_name)
             return cached
 
@@ -1130,6 +1340,13 @@ class AnalyticsService:
             "regression_diagnostics_completed model=%s duration_ms=%.2f cache_hit=false",
             model_name,
             duration_ms,
+        )
+        self._record_training_metric(
+            operation="regression_diagnostics",
+            task="regression",
+            model_name=model_name,
+            duration_ms=duration_ms,
+            cache_hit=False,
         )
         return payload
 

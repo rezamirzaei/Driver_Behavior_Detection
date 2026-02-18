@@ -68,12 +68,67 @@ class _FakeService:
             else "",
         }
 
+    def list_training_runs(self, task: str | None = None, limit: int = 30):
+        del limit
+        return [
+            {
+                "run_id": "run-001",
+                "signature": "sig-001",
+                "task": task or "classification",
+                "operation": "custom_learning",
+                "model_name": "Random Forest",
+                "status": "completed",
+                "cache_hit": True,
+                "started_at": "2026-02-18T00:00:00+00:00",
+                "finished_at": "2026-02-18T00:00:01+00:00",
+                "duration_ms": 100.0,
+                "artifact_id": "artifact-001",
+                "artifact_path": "results/model_artifacts/classification-artifact-001.json",
+                "feature_count": 2,
+                "metrics": {"validation": {"accuracy": 0.82}},
+                "cv_summary": {"metric_name": "f1_weighted"},
+                "error": None,
+            }
+        ]
+
+    def get_training_run(self, run_id: str):
+        if run_id != "run-001":
+            raise ValueError("Run not found")
+        return {
+            "run_id": "run-001",
+            "signature": "sig-001",
+            "task": "classification",
+            "operation": "custom_learning",
+            "model_name": "Random Forest",
+            "status": "completed",
+            "cache_hit": True,
+            "started_at": "2026-02-18T00:00:00+00:00",
+            "finished_at": "2026-02-18T00:00:01+00:00",
+            "duration_ms": 100.0,
+            "artifact_id": "artifact-001",
+            "artifact_path": "results/model_artifacts/classification-artifact-001.json",
+            "feature_count": 2,
+            "metrics": {"validation": {"accuracy": 0.82}},
+            "cv_summary": {"metric_name": "f1_weighted"},
+            "error": None,
+            "feature_names": ["speed_mean", "speed_std"],
+            "params": {"cv_folds": 3},
+            "data_version": "abc123",
+            "result": self.custom_learning(
+                task="classification",
+                model_name="Random Forest",
+                feature_names=["speed_mean", "speed_std"],
+                cv_folds=3,
+            ),
+        }
+
 
 def _client(monkeypatch):
     fake_service = _FakeService()
     monkeypatch.setattr(app_module, "build_service", lambda _: fake_service)
     app_module._service = None
     app_module._job_manager = None
+    app_module._observability = None
     return TestClient(app_module.app)
 
 
@@ -125,3 +180,29 @@ def test_custom_learning_job_flow_contract(monkeypatch) -> None:
     assert status_payload["status"] == "completed"
     assert status_payload["result"]["task"] == "regression"
     assert status_payload["result"]["validation_diagnostics_plot_url"].startswith("data:image/png;base64,")
+
+
+def test_training_runs_contract(monkeypatch) -> None:
+    with _client(monkeypatch) as client:
+        list_response = client.get("/api/training-runs", params={"task": "classification", "limit": 10})
+        assert list_response.status_code == 200
+        runs = list_response.json()["runs"]
+        assert len(runs) == 1
+        assert runs[0]["run_id"] == "run-001"
+
+        detail_response = client.get("/api/training-runs/run-001")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["run_id"] == "run-001"
+        assert detail["result"]["model_name"] == "Random Forest"
+
+
+def test_observability_metrics_contract(monkeypatch) -> None:
+    with _client(monkeypatch) as client:
+        _ = client.get("/api/health")
+        response = client.get("/api/observability/metrics")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "requests" in payload
+    assert isinstance(payload["requests"], dict)

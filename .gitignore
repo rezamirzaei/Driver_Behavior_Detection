@@ -58,9 +58,18 @@ data/UAH-DRIVESET-v1/*/*.avi
 
 # Results
 results/*.json
+results/*.sqlite
+results/model_artifacts/*.json
 results/figures/*.png
 !results/.gitkeep
 !results/figures/.gitkeep
+!results/model_artifacts/.gitkeep
+
+# Processed caches
+data/processed/*.parquet
+data/processed/*.meta.json
+data/processed/data_manifest.json
+!data/processed/.gitkeep
 
 # MacOS
 .DS_Store
@@ -70,4 +79,3 @@ results/figures/*.png
 # UV / Poetry
 uv.lock
 poetry.lock
-

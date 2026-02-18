@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 import time
 from typing import Any, Dict, Optional
+import uuid
 
 import matplotlib
 
@@ -18,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.api.config import get_settings
 from src.api.job_manager import JobManager
+from src.api.observability import ObservabilityRegistry
 from src.api.schemas import (
     ConfusionMatrixRequest,
     ConfusionMatrixResponse,
@@ -36,11 +38,16 @@ from src.api.schemas import (
     ModelComparisonResponse,
     ModelInfo,
     ModelsResponse,
+    ObservabilityMetricsResponse,
     RegressionDiagnosticsRequest,
     RegressionDiagnosticsResponse,
     TaskMetadataResponse,
     TaskQuery,
+    TaskType,
     TrainingHistoryPayload,
+    TrainingRunDetailResponse,
+    TrainingRunListResponse,
+    TrainingRunSummary,
     TwoFeatureRequest,
     TwoFeatureResponse,
 )
@@ -51,23 +58,34 @@ logger = logging.getLogger(__name__)
 
 _service: Optional[AnalyticsService] = None
 _job_manager: Optional[JobManager] = None
+_observability: Optional[ObservabilityRegistry] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize runtime service during startup."""
     del app
-    global _job_manager, _service
+    global _job_manager, _observability, _service
 
     settings = get_settings()
     try:
         _service = build_service(settings)
-        _job_manager = JobManager(max_workers=settings.async_job_workers)
+        _observability = ObservabilityRegistry()
+        if hasattr(_service, "set_observability"):
+            _service.set_observability(_observability)
+        _job_manager = JobManager(
+            custom_learning_handler=_service.custom_learning,
+            backend=settings.async_job_backend,
+            max_workers=settings.async_job_workers,
+            celery_broker_url=settings.celery_broker_url,
+            celery_result_backend=settings.celery_result_backend,
+        )
         logger.info("API service initialized")
     except Exception:  # pragma: no cover - startup should fail loudly in runtime
         logger.exception("Failed to initialize analytics service")
         _service = None
         _job_manager = None
+        _observability = None
 
     yield
 
@@ -83,17 +101,29 @@ app = FastAPI(
 @app.middleware("http")
 async def request_timing_middleware(request: Request, call_next):
     """Emit request timing metrics for observability."""
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     started = time.perf_counter()
     response = await call_next(request)
     elapsed_ms = (time.perf_counter() - started) * 1000.0
+
+    if _observability is not None:
+        _observability.record_request(
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=elapsed_ms,
+        )
+
     logger.info(
-        "request_completed method=%s path=%s status=%s duration_ms=%.2f",
+        "request_completed request_id=%s method=%s path=%s status=%s duration_ms=%.2f",
+        request_id,
         request.method,
         request.url.path,
         response.status_code,
         elapsed_ms,
     )
     response.headers["X-Process-Time-ms"] = f"{elapsed_ms:.2f}"
+    response.headers["X-Request-ID"] = request_id
     return response
 
 settings = get_settings()
@@ -140,6 +170,14 @@ def data_versions() -> DataVersionResponse:
     }
     versions = build_data_manifest(roots)
     return DataVersionResponse(versions=versions)
+
+
+@app.get("/api/observability/metrics", response_model=ObservabilityMetricsResponse)
+def get_observability_metrics() -> ObservabilityMetricsResponse:
+    """Return in-process request/training metrics snapshot."""
+    if _observability is None:
+        raise HTTPException(status_code=503, detail="Observability registry is not initialized")
+    return ObservabilityMetricsResponse(**_observability.snapshot())
 
 
 @app.get("/api/metadata", response_model=TaskMetadataResponse)
@@ -306,18 +344,18 @@ def run_custom_learning(
 @app.post("/api/model/custom-learning/job", response_model=JobStartResponse)
 def run_custom_learning_job(
     request: CustomLearningRequest,
-    service: AnalyticsService = Depends(require_service),
     job_manager: JobManager = Depends(require_job_manager),
 ) -> JobStartResponse:
     """Queue custom learning run as background job and return job id."""
-    record = job_manager.submit(
-        service.custom_learning,
-        task=request.task,
-        model_name=request.model_name,
-        feature_names=request.feature_names,
-        cv_folds=request.cv_folds,
-        persist_artifact=request.persist_artifact,
-        artifact_id=request.artifact_id,
+    record = job_manager.submit_custom_learning(
+        {
+            "task": request.task,
+            "model_name": request.model_name,
+            "feature_names": request.feature_names,
+            "cv_folds": request.cv_folds,
+            "persist_artifact": request.persist_artifact,
+            "artifact_id": request.artifact_id,
+        }
     )
     return JobStartResponse(job_id=record.job_id, status="running" if record.status == "running" else "pending")
 
@@ -329,6 +367,27 @@ def get_job_status(job_id: str, job_manager: JobManager = Depends(require_job_ma
     if record is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
     return JobStatusResponse(**record.to_payload())
+
+
+@app.get("/api/training-runs", response_model=TrainingRunListResponse)
+def get_training_runs(
+    task: Optional[TaskType] = None,
+    limit: int = 30,
+    service: AnalyticsService = Depends(require_service),
+) -> TrainingRunListResponse:
+    """List recent training runs for dashboard history."""
+    rows = service.list_training_runs(task=task, limit=limit)
+    return TrainingRunListResponse(runs=[TrainingRunSummary(**row) for row in rows])
+
+
+@app.get("/api/training-runs/{run_id}", response_model=TrainingRunDetailResponse)
+def get_training_run(run_id: str, service: AnalyticsService = Depends(require_service)) -> TrainingRunDetailResponse:
+    """Get one persisted training run by id."""
+    try:
+        payload = service.get_training_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return TrainingRunDetailResponse(**payload)
 
 
 @app.get("/api/model/compare", response_model=ModelComparisonResponse)

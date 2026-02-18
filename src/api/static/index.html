@@ -74,6 +74,12 @@
                         <button type="button" class="chip-action" ng-click="vm.selectCustomFeatures('clear')">Clear</button>
                     </div>
                     <input id="studioFeatureQuery" type="text" ng-model="vm.customLearning.featureQuery" placeholder="Search features by name or description">
+                    <label for="studioSourceFilter">Source Filter</label>
+                    <select id="studioSourceFilter" ng-model="vm.customLearning.sourceFilter">
+                        <option value="all">All sources</option>
+                        <option value="processed">Processed only</option>
+                        <option value="raw">Raw only</option>
+                    </select>
                     <select id="studioFeatureSelect" class="multi-select" multiple size="10" ng-model="vm.customLearning.selectedFeatures" ng-change="vm.onCustomFeatureChange()" ng-options="f.name as f.name for f in vm.features | filter:vm.customFeatureFilter"></select>
                     <p class="selection-hint">Selected: {{ vm.customLearning.selectedFeatures.length || 0 }} feature(s)</p>
                 </div>
@@ -102,6 +108,7 @@
                         <th>Feature</th>
                         <th>Type</th>
                         <th>Source</th>
+                        <th>Lineage</th>
                         <th>Description</th>
                     </tr>
                     </thead>
@@ -110,6 +117,7 @@
                         <td>{{ feature.name }}</td>
                         <td>{{ feature.is_numeric ? 'Numeric' : 'Categorical' }}</td>
                         <td>{{ feature.source_type }}</td>
+                        <td>{{ feature.lineage }}</td>
                         <td>{{ feature.description }} {{ feature.source_summary }}</td>
                     </tr>
                     </tbody>
@@ -122,6 +130,43 @@
             <p class="error" ng-if="vm.errors.custom">{{ vm.errors.custom }}</p>
             <p class="loading" ng-if="vm.loading.custom">Training selected model...</p>
             <p class="loading" ng-if="vm.loading.custom && vm.customJobStatus">Job {{ vm.customJobId }}: {{ vm.customJobStatus }}</p>
+
+            <div class="history-block">
+                <div class="history-header">
+                    <h4>Recent Runs</h4>
+                    <button type="button" class="chip-action" ng-click="vm.loadRunHistory()">Refresh</button>
+                </div>
+                <p class="error" ng-if="vm.errors.history">{{ vm.errors.history }}</p>
+                <p class="loading" ng-if="vm.loading.history">Loading run history...</p>
+                <div class="table-wrap" ng-if="vm.runHistory.length">
+                    <table class="history-table">
+                        <thead>
+                        <tr>
+                            <th>Started</th>
+                            <th>Model</th>
+                            <th>Status</th>
+                            <th>Features</th>
+                            <th>Duration (ms)</th>
+                            <th>Cache</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr ng-repeat="run in vm.runHistory">
+                            <td>{{ run.started_at | date:'yyyy-MM-dd HH:mm:ss' }}</td>
+                            <td>{{ run.model_name }}</td>
+                            <td>{{ run.status }}</td>
+                            <td>{{ run.feature_count }}</td>
+                            <td>{{ run.duration_ms !== null ? (run.duration_ms | number:1) : '-' }}</td>
+                            <td>{{ run.cache_hit ? 'hit' : 'miss' }}</td>
+                            <td>
+                                <button type="button" class="chip-action" ng-click="vm.loadHistoricalRun(run.run_id)" ng-disabled="run.status !== 'completed'">Load</button>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
             <div class="result" ng-if="vm.results.custom">
                 <p class="explanation">{{ vm.results.custom.explanation }}</p>
@@ -214,6 +259,7 @@
             </div>
             <p class="feature-note" ng-if="vm.selectedFeatureInfo">{{ vm.selectedFeatureInfo.description }}</p>
             <p class="feature-note" ng-if="vm.selectedFeatureInfo">{{ vm.selectedFeatureInfo.source_summary }}</p>
+            <p class="feature-note" ng-if="vm.selectedFeatureInfo && vm.selectedFeatureInfo.lineage">{{ vm.selectedFeatureInfo.lineage }}</p>
             <button type="button" class="action" ng-click="vm.runFeatureAnalysis()" ng-disabled="vm.loading.feature">Run Analysis</button>
             <p class="error" ng-if="vm.errors.feature">{{ vm.errors.feature }}</p>
             <p class="loading" ng-if="vm.loading.feature">Analyzing feature...</p>

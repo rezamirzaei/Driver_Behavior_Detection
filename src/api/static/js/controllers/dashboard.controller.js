@@ -34,6 +34,7 @@
             modelSelection: null,
             cvFolds: 1,
             featureQuery: "",
+            sourceFilter: "all",
             persistArtifact: false,
             artifactId: ""
         };
@@ -41,6 +42,7 @@
         vm.selectedFeatureInfo = null;
         vm.selectedModelInfo = null;
         vm.customSelectedFeatureInfo = [];
+        vm.runHistory = [];
         vm.customJobId = null;
         vm.customJobStatus = null;
         vm.customLearningPollPromise = null;
@@ -52,7 +54,8 @@
             corr: false,
             diagnostics: false,
             compare: false,
-            custom: false
+            custom: false,
+            history: false
         };
 
         vm.errors = {
@@ -62,7 +65,8 @@
             corr: null,
             diagnostics: null,
             compare: null,
-            custom: null
+            custom: null,
+            history: null
         };
 
         vm.results = {
@@ -91,6 +95,8 @@
         vm.customFeatureFilter = customFeatureFilter;
         vm.renderCell = renderCell;
         vm.runCustomLearning = runCustomLearning;
+        vm.loadRunHistory = loadRunHistory;
+        vm.loadHistoricalRun = loadHistoricalRun;
 
         init();
 
@@ -111,6 +117,7 @@
             vm.customSelectedFeatureInfo = [];
             vm.featureLookup = {};
             vm.modelLookup = {};
+            vm.runHistory = [];
             vm.customJobId = null;
             vm.customJobStatus = null;
             stopCustomJobPolling();
@@ -121,6 +128,7 @@
             vm.errors.diagnostics = null;
             vm.errors.compare = null;
             vm.errors.custom = null;
+            vm.errors.history = null;
         }
 
         function onTaskChange() {
@@ -151,10 +159,12 @@
                     vm.customLearning.modelSelection = vm.modelSelection;
                     vm.customLearning.cvFolds = 1;
                     vm.customLearning.featureQuery = "";
+                    vm.customLearning.sourceFilter = "all";
                     vm.customLearning.persistArtifact = false;
                     vm.customLearning.artifactId = "";
                     selectCustomFeatures(vm.numericFeatures.length ? "numeric" : "all");
                     onCustomFeatureChange();
+                    loadRunHistory();
 
                     if (vm.numericFeatures.length >= 2) {
                         vm.featurePair.first = vm.numericFeatures[0].name;
@@ -216,6 +226,11 @@
         }
 
         function customFeatureFilter(feature) {
+            if (vm.customLearning.sourceFilter && vm.customLearning.sourceFilter !== "all") {
+                if (feature.source_type !== vm.customLearning.sourceFilter) {
+                    return false;
+                }
+            }
             if (!vm.customLearning.featureQuery) {
                 return true;
             }
@@ -247,10 +262,12 @@
                                 vm.customSelectedFeatureInfo = vm.results.custom.selected_features;
                             }
                             vm.loading.custom = false;
+                            loadRunHistory();
                             stopCustomJobPolling();
                         } else if (payload.status === "failed") {
                             vm.errors.custom = payload.error || "Custom learning job failed.";
                             vm.loading.custom = false;
+                            loadRunHistory();
                             stopCustomJobPolling();
                         }
                     })
@@ -412,7 +429,7 @@
                 feature_names: vm.customLearning.selectedFeatures,
                 cv_folds: vm.customLearning.cvFolds,
                 persist_artifact: vm.customLearning.persistArtifact,
-                artifact_id: vm.customLearning.artifactId || null
+                artifact_id: (vm.customLearning.artifactId || "").trim() || null
             })
                 .then(function (response) {
                     vm.customJobId = response.data.job_id;
@@ -424,6 +441,53 @@
                     vm.loading.custom = false;
                 })
                 ;
+        }
+
+        function loadRunHistory() {
+            vm.loading.history = true;
+            vm.errors.history = null;
+
+            ApiService.getTrainingRuns(vm.task, 30)
+                .then(function (response) {
+                    vm.runHistory = response.data.runs || [];
+                })
+                .catch(function (error) {
+                    vm.errors.history = parseError(error, "Failed to load run history.");
+                })
+                .finally(function () {
+                    vm.loading.history = false;
+                });
+        }
+
+        function loadHistoricalRun(runId) {
+            if (!runId) {
+                return;
+            }
+
+            vm.loading.custom = true;
+            vm.errors.custom = null;
+            vm.activeTab = "studio";
+
+            ApiService.getTrainingRun(runId)
+                .then(function (response) {
+                    var payload = response.data || {};
+                    if (payload.result) {
+                        vm.results.custom = payload.result;
+                    }
+                    if (payload.model_name) {
+                        vm.customLearning.modelSelection = payload.model_name;
+                    }
+                    if (Array.isArray(payload.feature_names) && payload.feature_names.length) {
+                        vm.customLearning.selectedFeatures = payload.feature_names;
+                        onCustomFeatureChange();
+                    }
+                })
+                .catch(function (error) {
+                    vm.errors.custom = parseError(error, "Failed to load historical run.");
+                })
+                .finally(function () {
+                    vm.loading.custom = false;
+                });
         }
 
         function parseError(error, fallback) {

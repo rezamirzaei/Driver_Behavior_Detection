@@ -133,7 +133,8 @@ Open `http://localhost:8000` for the dashboard.
 docker compose up --build
 ```
 
-Open `http://localhost:8000` for the API + UI.
+This starts API + UI + Redis + Celery worker (async training jobs).
+Open `http://localhost:8000` for the dashboard.
 
 ### 6. Compile LaTeX Report
 
@@ -156,7 +157,13 @@ Task-aware endpoints (`task=classification|regression`):
 - `GET /api/correlation-matrix` - full correlation matrix + high-correlation pairs
 - `POST /api/model/confusion-matrix` - classification confusion matrix
 - `POST /api/model/regression-diagnostics` - regression residual diagnostics
+- `POST /api/model/custom-learning` - feature-subset learning (sync)
+- `POST /api/model/custom-learning/job` - feature-subset learning (async job)
+- `GET /api/jobs/{job_id}` - async job polling
+- `GET /api/training-runs` - persisted run history
+- `GET /api/training-runs/{run_id}` - one run details with cached payload
 - `GET /api/model/compare` - all-model benchmark for selected task
+- `GET /api/observability/metrics` - in-process request/training metrics snapshot
 
 ---
 

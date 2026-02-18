@@ -1,4 +1,4 @@
-"""In-memory background job manager for long-running API tasks."""
+"""Background job manager with local and optional Celery backends."""
 
 from __future__ import annotations
 
@@ -7,10 +7,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
 import traceback
-from typing import Any, Callable, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional, Protocol
 import uuid
 
 JobStatus = Literal["pending", "running", "completed", "failed"]
+CustomLearningHandler = Callable[..., Dict[str, Any]]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(tz=timezone.utc)
 
 
 @dataclass
@@ -19,7 +24,7 @@ class JobRecord:
 
     job_id: str
     status: JobStatus = "pending"
-    created_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    created_at: datetime = field(default_factory=_utc_now)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     result: Optional[Any] = None
@@ -38,18 +43,26 @@ class JobRecord:
         }
 
 
-class JobManager:
-    """Thread-backed background job execution with polling support."""
+class _JobBackend(Protocol):
+    def submit_custom_learning(self, payload: Dict[str, Any]) -> JobRecord:
+        ...
 
-    def __init__(self, max_workers: int = 2, max_retained_jobs: int = 300) -> None:
+    def get(self, job_id: str) -> Optional[JobRecord]:
+        ...
+
+
+class _LocalJobBackend:
+    """Thread-backed local job execution backend."""
+
+    def __init__(self, custom_learning_handler: CustomLearningHandler, max_workers: int, max_retained_jobs: int) -> None:
+        self._custom_learning_handler = custom_learning_handler
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="abax-job")
         self._max_retained_jobs = max_retained_jobs
         self._lock = Lock()
         self._jobs: Dict[str, JobRecord] = {}
         self._order: List[str] = []
 
-    def submit(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> JobRecord:
-        """Queue a job for asynchronous execution."""
+    def submit_custom_learning(self, payload: Dict[str, Any]) -> JobRecord:
         job_id = str(uuid.uuid4())
         record = JobRecord(job_id=job_id)
 
@@ -58,37 +71,36 @@ class JobManager:
             self._order.append(job_id)
             self._trim_locked()
 
-        self._executor.submit(self._run_job, job_id, fn, *args, **kwargs)
+        self._executor.submit(self._run_job, job_id, payload)
         return record
 
-    def _run_job(self, job_id: str, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
+    def _run_job(self, job_id: str, payload: Dict[str, Any]) -> None:
         with self._lock:
             record = self._jobs.get(job_id)
             if record is None:
                 return
             record.status = "running"
-            record.started_at = datetime.now(tz=timezone.utc)
+            record.started_at = _utc_now()
 
         try:
-            result = fn(*args, **kwargs)
+            result = self._custom_learning_handler(**payload)
             with self._lock:
                 record = self._jobs.get(job_id)
                 if record is None:
                     return
                 record.result = result
                 record.status = "completed"
-                record.finished_at = datetime.now(tz=timezone.utc)
+                record.finished_at = _utc_now()
         except Exception as exc:  # pragma: no cover - defensive runtime guard
             with self._lock:
                 record = self._jobs.get(job_id)
                 if record is None:
                     return
                 record.status = "failed"
-                record.finished_at = datetime.now(tz=timezone.utc)
+                record.finished_at = _utc_now()
                 record.error = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
 
     def get(self, job_id: str) -> Optional[JobRecord]:
-        """Fetch one job record by id."""
         with self._lock:
             return self._jobs.get(job_id)
 
@@ -117,3 +129,100 @@ class JobManager:
                 kept_order.append(job_id)
 
         self._order = kept_order
+
+
+class _CeleryJobBackend:
+    """Celery-backed backend using Redis/Rabbit broker and result backend."""
+
+    def __init__(self, broker_url: str, result_backend: str) -> None:
+        try:
+            from celery import Celery  # type: ignore
+            from celery.result import AsyncResult  # type: ignore
+        except ImportError as exc:  # pragma: no cover - depends on runtime extras
+            raise RuntimeError(
+                "Celery backend requested but 'celery' is not installed. "
+                "Install celery and redis extras or use ABAX_ASYNC_JOB_BACKEND=local."
+            ) from exc
+
+        self._celery_cls = Celery
+        self._async_result_cls = AsyncResult
+        self._app = Celery("abax-api-client", broker=broker_url, backend=result_backend)
+        self._task_name = "src.api.celery_tasks.run_custom_learning_task"
+        self._lock = Lock()
+        self._submitted: Dict[str, JobRecord] = {}
+
+    def submit_custom_learning(self, payload: Dict[str, Any]) -> JobRecord:
+        async_result = self._app.send_task(self._task_name, kwargs={"payload": payload})
+        record = JobRecord(job_id=str(async_result.id), status="pending")
+        with self._lock:
+            self._submitted[record.job_id] = record
+        return record
+
+    def get(self, job_id: str) -> Optional[JobRecord]:
+        with self._lock:
+            seed = self._submitted.get(job_id, JobRecord(job_id=job_id))
+
+        async_result = self._async_result_cls(job_id, app=self._app)
+        state = str(async_result.state).upper()
+        payload = JobRecord(job_id=job_id, created_at=seed.created_at)
+
+        if state in {"PENDING", "RECEIVED"}:
+            payload.status = "pending"
+            return payload
+        if state in {"STARTED", "RETRY"}:
+            payload.status = "running"
+            payload.started_at = seed.started_at or _utc_now()
+            with self._lock:
+                cached = self._submitted.get(job_id)
+                if cached is not None and cached.started_at is None:
+                    cached.started_at = payload.started_at
+            return payload
+        if state == "SUCCESS":
+            payload.status = "completed"
+            payload.started_at = seed.started_at
+            payload.finished_at = _utc_now()
+            payload.result = async_result.result
+            return payload
+        if state == "FAILURE":
+            payload.status = "failed"
+            payload.started_at = seed.started_at
+            payload.finished_at = _utc_now()
+            payload.error = str(async_result.result)
+            return payload
+
+        payload.status = "pending"
+        return payload
+
+
+class JobManager:
+    """Facade over local threaded jobs and optional Celery-backed jobs."""
+
+    def __init__(
+        self,
+        *,
+        custom_learning_handler: CustomLearningHandler,
+        backend: str = "local",
+        max_workers: int = 2,
+        max_retained_jobs: int = 300,
+        celery_broker_url: str = "redis://redis:6379/0",
+        celery_result_backend: str = "redis://redis:6379/1",
+    ) -> None:
+        if backend == "celery":
+            self._backend: _JobBackend = _CeleryJobBackend(
+                broker_url=celery_broker_url,
+                result_backend=celery_result_backend,
+            )
+        else:
+            self._backend = _LocalJobBackend(
+                custom_learning_handler=custom_learning_handler,
+                max_workers=max_workers,
+                max_retained_jobs=max_retained_jobs,
+            )
+
+    def submit_custom_learning(self, payload: Dict[str, Any]) -> JobRecord:
+        """Queue one custom-learning payload asynchronously."""
+        return self._backend.submit_custom_learning(payload)
+
+    def get(self, job_id: str) -> Optional[JobRecord]:
+        """Get job status/result by id."""
+        return self._backend.get(job_id)

@@ -166,6 +166,7 @@ class FeatureInfo(BaseModel):
     is_numeric: bool
     source_type: FeatureSourceType = "processed"
     source_summary: str = ""
+    lineage: str = ""
 
 
 class ModelInfo(BaseModel):
@@ -337,6 +338,51 @@ class DataVersionResponse(BaseModel):
     """Response for data-version manifest endpoint."""
 
     versions: Dict[str, str]
+
+
+class ObservabilityMetricsResponse(BaseModel):
+    """Response payload for in-process observability metrics."""
+
+    started_at: str
+    generated_at: str
+    requests: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    training: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+
+
+class TrainingRunSummary(BaseModel):
+    """Compact training-run summary for history views."""
+
+    run_id: str
+    signature: str
+    task: TaskType
+    operation: str
+    model_name: str
+    status: Literal["running", "completed", "failed"]
+    cache_hit: bool = False
+    started_at: str
+    finished_at: Optional[str] = None
+    duration_ms: Optional[float] = None
+    artifact_id: str = ""
+    artifact_path: str = ""
+    feature_count: int = 0
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    cv_summary: Dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+
+
+class TrainingRunListResponse(BaseModel):
+    """Response for recent training-run list endpoint."""
+
+    runs: List[TrainingRunSummary] = Field(default_factory=list)
+
+
+class TrainingRunDetailResponse(TrainingRunSummary):
+    """Full persisted training-run payload."""
+
+    feature_names: List[str] = Field(default_factory=list)
+    params: Dict[str, Any] = Field(default_factory=dict)
+    data_version: str = ""
+    result: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelComparisonResponse(BaseModel):

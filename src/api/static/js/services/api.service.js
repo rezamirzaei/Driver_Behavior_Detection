@@ -56,6 +56,18 @@
             return $http.get("/api/data/version");
         };
 
+        this.getObservabilityMetrics = function () {
+            return $http.get("/api/observability/metrics");
+        };
+
+        this.getTrainingRuns = function (task, limit) {
+            return $http.get("/api/training-runs", { params: { task: task, limit: limit || 30 } });
+        };
+
+        this.getTrainingRun = function (runId) {
+            return $http.get("/api/training-runs/" + encodeURIComponent(runId));
+        };
+
         this.compareModels = function (task) {
             return $http.get("/api/model/compare", { params: { task: task } });
         };

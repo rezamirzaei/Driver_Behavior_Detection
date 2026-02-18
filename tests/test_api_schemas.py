@@ -20,10 +20,14 @@ from src.api.schemas import (
     ModelComparisonResponse,
     ModelInfo,
     ModelRequest,
+    ObservabilityMetricsResponse,
     RegressionDiagnosticsRequest,
     RegressionDiagnosticsResponse,
     TrainingHistoryPayload,
     TrainingHistoryPoint,
+    TrainingRunDetailResponse,
+    TrainingRunListResponse,
+    TrainingRunSummary,
     TwoFeatureRequest,
     TwoFeatureResponse,
 )
@@ -203,6 +207,7 @@ class TestResponseModels:
         feature = FeatureInfo(name="speed_mean", description="Average speed", is_numeric=True)
         assert feature.is_numeric is True
         assert feature.source_type in {"raw", "processed"}
+        assert feature.lineage == ""
 
     def test_model_info(self) -> None:
         model = ModelInfo(
@@ -262,3 +267,40 @@ class TestResponseModels:
     def test_health_response(self) -> None:
         health = HealthResponse(status="ok", version="2.0.0", tasks_loaded={"classification": True, "regression": True})
         assert health.tasks_loaded["classification"]
+
+    def test_training_run_models(self) -> None:
+        summary = TrainingRunSummary(
+            run_id="run-1",
+            signature="sig-1",
+            task="classification",
+            operation="custom_learning",
+            model_name="Random Forest",
+            status="completed",
+            cache_hit=True,
+            started_at="2026-02-18T00:00:00+00:00",
+            finished_at="2026-02-18T00:00:01+00:00",
+            duration_ms=100.0,
+            feature_count=2,
+            metrics={"validation": {"accuracy": 0.8}},
+            cv_summary={},
+        )
+        wrapper = TrainingRunListResponse(runs=[summary])
+        assert wrapper.runs[0].run_id == "run-1"
+
+        detail = TrainingRunDetailResponse(
+            **summary.model_dump(),
+            feature_names=["speed_mean", "speed_std"],
+            params={"cv_folds": 3},
+            data_version="hash-1",
+            result={"model_name": "Random Forest"},
+        )
+        assert detail.feature_names[0] == "speed_mean"
+
+    def test_observability_metrics_response(self) -> None:
+        payload = ObservabilityMetricsResponse(
+            started_at="2026-02-18T00:00:00+00:00",
+            generated_at="2026-02-18T00:00:01+00:00",
+            requests={"GET /api/health": {"count": 1, "avg_duration_ms": 10.0}},
+            training={},
+        )
+        assert "GET /api/health" in payload.requests

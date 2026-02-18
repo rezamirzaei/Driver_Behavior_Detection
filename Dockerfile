@@ -19,6 +19,7 @@ RUN pip install --upgrade pip \
         "matplotlib>=3.7.0,<3.10.0" \
         "numpy>=1.24.0,<1.27.0" \
         "pandas>=2.0.0,<2.1.0" \
+        "pyarrow>=15.0.0" \
         "plotly>=5.18.0" \
         "pydantic>=2.0.0,<3.0.0" \
         "pydantic-settings>=2.2.0,<3.0.0" \
@@ -27,6 +28,8 @@ RUN pip install --upgrade pip \
         "seaborn>=0.12.0,<0.14.0" \
         "torch>=2.0.0,<2.3.0" \
         "tqdm>=4.65.0" \
+        "celery>=5.4.0,<5.5.0" \
+        "redis>=5.0.0,<6.0.0" \
         "fastapi>=0.109.1" \
         "uvicorn[standard]>=0.27.0"
 
