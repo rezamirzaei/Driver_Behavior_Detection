@@ -23,10 +23,14 @@ class AppSettings(BaseSettings):
     random_state: int = 42
     test_size: float = Field(default=0.2, gt=0.05, lt=0.5)
     training_history_iterations: int = Field(default=12, ge=2, le=40)
+    training_cache_enabled: bool = True
+    training_cache_max_entries: int = Field(default=256, ge=16, le=4096)
+    async_job_workers: int = Field(default=2, ge=1, le=8)
 
-    classification_cache_csv: str = "data/processed/uah_raw_features.csv"
+    classification_cache_csv: str = "data/processed/uah_raw_features.parquet"
     classification_raw_dir: str = "data/UAH-DRIVESET-v1"
-    regression_cache_csv: str = "data/processed/epa_fuel_economy.csv"
+    regression_cache_csv: str = "data/processed/epa_fuel_economy.parquet"
+    data_manifest_path: str = "data/processed/data_manifest.json"
 
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
 

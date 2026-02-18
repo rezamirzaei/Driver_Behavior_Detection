@@ -87,7 +87,15 @@ class UAHDataLoader:
                 "ratio_distracted",
             ]
 
-            df = pd.read_csv(semantic_file, sep=r"\s+", names=online_cols, header=None)
+            raw_df = pd.read_csv(semantic_file, sep=r"\s+", header=None)
+            if raw_df.empty:
+                return None
+
+            # UAH files are expected to contain 27 columns, but some dataset variants
+            # can differ slightly; keep parsing resilient.
+            usable_cols = min(len(online_cols), raw_df.shape[1])
+            df = raw_df.iloc[:, :usable_cols].copy()
+            df.columns = online_cols[:usable_cols]
 
             if len(df) == 0:
                 return None
@@ -95,19 +103,32 @@ class UAHDataLoader:
             # Get last row (final summary)
             last_row = df.iloc[-1]
 
+            def _value(name: str, default: float = 0.0) -> float:
+                value = pd.to_numeric(last_row.get(name, default), errors="coerce")
+                if pd.isna(value):
+                    return float(default)
+                return float(value)
+
+            def _ratio(name: str) -> float:
+                value = _value(name, 0.0)
+                # Some dumps encode ratios as percentages instead of [0, 1].
+                if value > 1.0 and value <= 100.0:
+                    value = value / 100.0
+                return float(max(0.0, min(1.0, value)))
+
             # Select relevant features
             features = {
-                "score_total": last_row.get("score_total", 0),
-                "score_accelerations": last_row.get("score_accelerations", 0),
-                "score_brakings": last_row.get("score_brakings", 0),
-                "score_turnings": last_row.get("score_turnings", 0),
-                "score_weaving": last_row.get("score_weaving", 0),
-                "score_drifting": last_row.get("score_drifting", 0),
-                "score_overspeeding": last_row.get("score_overspeeding", 0),
-                "score_following": last_row.get("score_following", 0),
-                "ratio_normal": last_row.get("ratio_normal", 0),
-                "ratio_drowsy": last_row.get("ratio_drowsy", 0),
-                "ratio_aggressive": last_row.get("ratio_aggressive", 0),
+                "score_total": _value("score_total"),
+                "score_accelerations": _value("score_accelerations"),
+                "score_brakings": _value("score_brakings"),
+                "score_turnings": _value("score_turnings"),
+                "score_weaving": _value("score_weaving"),
+                "score_drifting": _value("score_drifting"),
+                "score_overspeeding": _value("score_overspeeding"),
+                "score_following": _value("score_following"),
+                "ratio_normal": _ratio("ratio_normal"),
+                "ratio_drowsy": _ratio("ratio_drowsy"),
+                "ratio_aggressive": _ratio("ratio_aggressive"),
             }
 
             validated = validate_record(
@@ -146,7 +167,10 @@ class UAHDataLoader:
             Dataset with features and target (and optionally driver info for splitting).
         """
         if drivers is None:
-            drivers = ["D1", "D2", "D3", "D4", "D5", "D6"]
+            drivers = sorted([path.name for path in self.data_dir.glob("D*") if path.is_dir()])
+
+        normalized_behaviors = [behavior.upper() for behavior in behaviors] if behaviors else None
+        normalized_road_types = [road_type.upper() for road_type in road_types] if road_types else None
 
         all_data = []
 
@@ -168,18 +192,19 @@ class UAHDataLoader:
                 road_type = None
 
                 for part in parts:
-                    if part in ["NORMAL", "NORMAL1", "NORMAL2", "AGGRESSIVE", "DROWSY"]:
-                        behavior = part.replace("1", "").replace("2", "")
-                    elif part in ["MOTORWAY", "SECONDARY"]:
-                        road_type = part
+                    upper_part = part.upper()
+                    if upper_part in ["NORMAL", "NORMAL1", "NORMAL2", "AGGRESSIVE", "DROWSY"]:
+                        behavior = upper_part.replace("1", "").replace("2", "")
+                    elif upper_part in ["MOTORWAY", "SECONDARY"]:
+                        road_type = upper_part
 
                 if behavior is None:
                     continue
 
                 # Apply filters
-                if behaviors and behavior not in behaviors:
+                if normalized_behaviors and behavior not in normalized_behaviors:
                     continue
-                if road_types and road_type not in road_types:
+                if normalized_road_types and road_type not in normalized_road_types:
                     continue
 
                 # Load trip summary

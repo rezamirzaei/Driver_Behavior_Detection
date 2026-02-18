@@ -4,26 +4,23 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="af8179b2-3fad-407e-9954-05e19cb2bbad" name="Changes" comment="data validation with pydantic model">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    <list default="true" id="af8179b2-3fad-407e-9954-05e19cb2bbad" name="Changes" comment="ui improvement">
+      <change beforePath="$PROJECT_DIR$/.github/workflows/ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/ci.yml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/02_classification.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/02_classification.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/generate_notebook_figures.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/generate_notebook_figures.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/catalog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/catalog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/api/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/schemas.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/services.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/services.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/static/css/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/static/css/styles.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/static/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/static/index.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/api/static/js/controllers/dashboard.controller.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/static/js/controllers/dashboard.controller.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/api/static/js/services/api.service.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/api/static/js/services/api.service.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/classification/data.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/classification/data.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/data/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/data/event_counts.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/event_counts.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/data/raw_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/raw_loader.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/data/sample_models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/sample_models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/uah_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/uah_loader.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/test_api_schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_api_schemas.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_data_validation.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_data_validation.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_event_counts.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_event_counts.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -158,7 +155,7 @@
       <workItem from="1770404065957" duration="1261000" />
       <workItem from="1771353980598" duration="1232000" />
       <workItem from="1771357643237" duration="7241000" />
-      <workItem from="1771371031559" duration="6090000" />
+      <workItem from="1771371031559" duration="7082000" />
     </task>
     <task id="LOCAL-00001" summary="first commit, classification for UAH data and regression for EDA data">
       <option name="closed" value="true" />
@@ -296,7 +293,23 @@
       <option name="project" value="LOCAL" />
       <updated>1771374730354</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="ui improvement">
+      <option name="closed" value="true" />
+      <created>1771378238328</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1771378238328</updated>
+    </task>
+    <task id="LOCAL-00019" summary="ui improvement">
+      <option name="closed" value="true" />
+      <created>1771378246838</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1771378246838</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -317,7 +330,8 @@
     <MESSAGE value="update" />
     <MESSAGE value="unify model registry, enforce Pydantic contracts, and add per-iteration train/validation error diagnostics" />
     <MESSAGE value="data validation with pydantic model" />
-    <option name="LAST_COMMIT_MESSAGE" value="data validation with pydantic model" />
+    <MESSAGE value="ui improvement" />
+    <option name="LAST_COMMIT_MESSAGE" value="ui improvement" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

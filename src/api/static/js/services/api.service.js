@@ -44,6 +44,18 @@
             return $http.post("/api/model/custom-learning", payload);
         };
 
+        this.startCustomLearningJob = function (payload) {
+            return $http.post("/api/model/custom-learning/job", payload);
+        };
+
+        this.getJobStatus = function (jobId) {
+            return $http.get("/api/jobs/" + encodeURIComponent(jobId));
+        };
+
+        this.getDataVersions = function () {
+            return $http.get("/api/data/version");
+        };
+
         this.compareModels = function (task) {
             return $http.get("/api/model/compare", { params: { task: task } });
         };

@@ -111,8 +111,27 @@ class TestSpecializedModelRequests:
             task="regression",
             model_name=_first_model("regression"),
             feature_names=ALLOWED_FEATURES_BY_TASK["regression"][:3],
+            cv_folds=3,
         )
         assert req.task == "regression"
+
+    def test_custom_learning_request_accepts_artifact_without_features(self) -> None:
+        req = CustomLearningRequest(
+            task="classification",
+            model_name=_first_model("classification"),
+            feature_names=[],
+            artifact_id="abc123",
+        )
+        assert req.artifact_id == "abc123"
+
+    def test_custom_learning_request_rejects_invalid_cv_folds(self) -> None:
+        with pytest.raises(ValidationError):
+            CustomLearningRequest(
+                task="classification",
+                model_name=_first_model("classification"),
+                feature_names=ALLOWED_FEATURES_BY_TASK["classification"][:2],
+                cv_folds=0,
+            )
 
 
 class TestResponseModels:

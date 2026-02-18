@@ -10,7 +10,7 @@ services:
       ABAX_APP_VERSION: "2.0.0"
       ABAX_TEST_SIZE: "0.2"
       ABAX_RANDOM_STATE: "42"
-      ABAX_CLASSIFICATION_CACHE_CSV: "/tmp/uah_raw_features.csv"
+      ABAX_CLASSIFICATION_CACHE_CSV: "/tmp/uah_raw_features.parquet"
     volumes:
       - ./data:/app/data:ro
     restart: unless-stopped

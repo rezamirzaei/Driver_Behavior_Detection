@@ -9,6 +9,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.api.model_registry import ModelRegistry
+from src.data.cache_io import read_dataframe_cache
 from src.features.preprocessing import engineer_regression_features
 
 TaskType = Literal["classification", "regression"]
@@ -171,7 +172,7 @@ class TaskCatalog(BaseModel):
 
 def _load_classification_features(classification_csv: Path) -> Tuple[List[str], List[str]]:
     if classification_csv.exists():
-        df = pd.read_csv(classification_csv, nrows=10)
+        df = read_dataframe_cache(classification_csv)
         feature_cols = [
             col
             for col in df.columns
@@ -185,7 +186,7 @@ def _load_classification_features(classification_csv: Path) -> Tuple[List[str], 
 
 def _load_regression_features(regression_csv: Path) -> Tuple[List[str], List[str]]:
     if regression_csv.exists():
-        df = pd.read_csv(regression_csv, nrows=200)
+        df = read_dataframe_cache(regression_csv)
         df = engineer_regression_features(df)
         feature_cols = [col for col in df.columns if col != "comb08"]
         numeric_cols = [col for col in feature_cols if pd.api.types.is_numeric_dtype(df[col])]

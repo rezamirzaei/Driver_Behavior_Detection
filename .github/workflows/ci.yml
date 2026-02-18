@@ -58,6 +58,7 @@ jobs:
             "matplotlib>=3.7.0,<3.10.0" \
             "numpy>=1.24.0,<1.27.0" \
             "pandas>=2.0.0,<2.1.0" \
+            "pyarrow>=15.0.0" \
             "plotly>=5.18.0" \
             "pydantic>=2.0.0,<3.0.0" \
             "pydantic-settings>=2.2.0,<3.0.0" \
@@ -79,7 +80,7 @@ jobs:
           ruff format --check src tests main.py
 
       - name: Mypy
-        run: mypy src
+        run: mypy src tests
 
       - name: Pytest
         run: pytest tests/ -v --tb=short
@@ -88,7 +89,7 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-latest
     needs: [changes, quality]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.quality.result == 'success' || needs.quality.result == 'skipped') && (needs.changes.outputs.docker == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.workflow == 'true')
+    if: always() && (needs.quality.result == 'success' || needs.quality.result == 'skipped') && (needs.changes.outputs.docker == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.workflow == 'true')
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image

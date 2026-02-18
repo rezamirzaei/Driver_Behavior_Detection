@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/styles.css?v=20260218e">
+    <link rel="stylesheet" href="/static/css/styles.css?v=20260218g">
     <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
 </head>
 <body ng-controller="DashboardController as vm">
@@ -73,12 +73,21 @@
                         <button type="button" class="chip-action" ng-click="vm.selectCustomFeatures('all')">Top 12</button>
                         <button type="button" class="chip-action" ng-click="vm.selectCustomFeatures('clear')">Clear</button>
                     </div>
-                    <select id="studioFeatureSelect" class="multi-select" multiple size="10" ng-model="vm.customLearning.selectedFeatures" ng-change="vm.onCustomFeatureChange()" ng-options="f.name as f.name for f in vm.features"></select>
+                    <input id="studioFeatureQuery" type="text" ng-model="vm.customLearning.featureQuery" placeholder="Search features by name or description">
+                    <select id="studioFeatureSelect" class="multi-select" multiple size="10" ng-model="vm.customLearning.selectedFeatures" ng-change="vm.onCustomFeatureChange()" ng-options="f.name as f.name for f in vm.features | filter:vm.customFeatureFilter"></select>
                     <p class="selection-hint">Selected: {{ vm.customLearning.selectedFeatures.length || 0 }} feature(s)</p>
                 </div>
                 <div class="field-row">
                     <label for="studioModelSelect">Model</label>
                     <select id="studioModelSelect" ng-model="vm.customLearning.modelSelection" ng-options="m for m in vm.models"></select>
+                    <label for="studioCvFolds">Cross-Validation Folds</label>
+                    <select id="studioCvFolds" ng-model="vm.customLearning.cvFolds" ng-options="fold for fold in vm.availableCvFolds"></select>
+                    <label for="studioArtifactId">Artifact ID (optional)</label>
+                    <input id="studioArtifactId" type="text" ng-model="vm.customLearning.artifactId" placeholder="Load existing artifact by id">
+                    <label class="inline-check" for="studioPersistArtifact">
+                        <input id="studioPersistArtifact" type="checkbox" ng-model="vm.customLearning.persistArtifact">
+                        Save this run as reusable artifact
+                    </label>
                     <div class="model-profile" ng-if="vm.modelLookup[vm.customLearning.modelSelection]">
                         <p><strong>Family:</strong> {{ vm.modelLookup[vm.customLearning.modelSelection].family }}</p>
                         <p>{{ vm.modelLookup[vm.customLearning.modelSelection].description }}</p>
@@ -112,6 +121,7 @@
             </button>
             <p class="error" ng-if="vm.errors.custom">{{ vm.errors.custom }}</p>
             <p class="loading" ng-if="vm.loading.custom">Training selected model...</p>
+            <p class="loading" ng-if="vm.loading.custom && vm.customJobStatus">Job {{ vm.customJobId }}: {{ vm.customJobStatus }}</p>
 
             <div class="result" ng-if="vm.results.custom">
                 <p class="explanation">{{ vm.results.custom.explanation }}</p>
@@ -136,6 +146,26 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="metric-grid" ng-if="vm.results.custom.cv_metric_name">
+                    <div class="metric">
+                        <span>CV Metric</span>
+                        <strong>{{ vm.results.custom.cv_metric_name }}</strong>
+                    </div>
+                    <div class="metric">
+                        <span>CV Mean</span>
+                        <strong>{{ vm.results.custom.cv_mean | number:4 }}</strong>
+                    </div>
+                    <div class="metric">
+                        <span>CV Std</span>
+                        <strong>{{ vm.results.custom.cv_std | number:4 }}</strong>
+                    </div>
+                </div>
+
+                <p class="feature-note" ng-if="vm.results.custom.artifact_saved">
+                    Saved artifact: <strong>{{ vm.results.custom.artifact_id }}</strong><br>
+                    <span>{{ vm.results.custom.artifact_path }}</span>
+                </p>
 
                 <div class="plot-stack">
                     <img ng-if="vm.results.custom.train_confusion_matrix_url" ng-src="{{ vm.results.custom.train_confusion_matrix_url }}" alt="Training confusion matrix">

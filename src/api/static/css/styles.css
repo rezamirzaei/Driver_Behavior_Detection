@@ -151,7 +151,19 @@ label {
     color: var(--ink-soft);
 }
 
+label.inline-check {
+    display: flex;
+    gap: 0.45rem;
+    align-items: center;
+    font-weight: 500;
+}
+
+label.inline-check input[type="checkbox"] {
+    width: auto;
+}
+
 select,
+input[type="text"],
 button.action {
     width: 100%;
     border: 1px solid var(--line);
@@ -165,6 +177,10 @@ button.action {
 select {
     position: relative;
     z-index: 4;
+}
+
+input[type="text"] {
+    border: 1px solid var(--line);
 }
 
 .multi-select {

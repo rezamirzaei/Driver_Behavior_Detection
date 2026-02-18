@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import base64
+import copy
 from dataclasses import dataclass
+import hashlib
 import io
+import json
 import logging
 import os
-from typing import Any, Dict, List, Tuple
+from pathlib import Path
+from threading import Lock
+import time
+from typing import Any, Dict, List, Optional, Tuple
 import warnings
 
 # Avoid oversubscription/deadlocks from mixed OpenMP runtimes in containerized environments.
@@ -19,12 +25,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score, train_test_split
 
 from src.api.catalog import TaskCatalog, TaskType, build_task_catalogs
 from src.api.config import AppSettings
 from src.api.model_registry import ModelRegistry
 from src.core.schemas import ClassificationMetrics, RegressionMetrics, SplitData, TrainingHistory
+from src.data.cache_io import read_dataframe_cache, write_dataframe_cache
 from src.data.epa_loader import load_epa_fuel_economy
 from src.data.sample_models import ClassificationTripSample, EPAVehicleSample
 from src.data.splitter import split_by_driver
@@ -45,6 +52,7 @@ logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", message=".*Intel OpenMP.*", category=RuntimeWarning)
 
 REMOVED_CLASSIFICATION_COLUMNS = {"hard_brake_count", "hard_break_count"}
+REGRESSION_CACHE_SCHEMA_VERSION = "1.0.0"
 
 
 @dataclass
@@ -82,6 +90,16 @@ class AnalyticsService:
             "classification": self._load_classification_runtime(),
             "regression": self._load_regression_runtime(),
         }
+        self._runtime_data_versions = {
+            task: self._build_runtime_data_version(runtime)
+            for task, runtime in self.runtimes.items()
+        }
+
+        self._training_cache_enabled = bool(self.settings.training_cache_enabled)
+        self._training_cache_max_entries = int(self.settings.training_cache_max_entries)
+        self._training_cache: Dict[str, Any] = {}
+        self._training_cache_order: List[str] = []
+        self._training_cache_lock = Lock()
 
     @staticmethod
     def _looks_like_legacy_event_counts(df: pd.DataFrame) -> bool:
@@ -119,7 +137,7 @@ class AnalyticsService:
         from src.classification.data import load_or_build_dataset
 
         if cache_path.exists():
-            df = pd.read_csv(cache_path)
+            df = read_dataframe_cache(cache_path)
             df = validate_dataframe_records(df, ClassificationTripSample, strict=False, context="classification_cache")
             df = self._sanitize_classification_dataframe(df)
             if self._looks_like_legacy_event_counts(df):
@@ -194,6 +212,7 @@ class AnalyticsService:
     def _load_regression_runtime(self) -> TaskRuntime:
         catalog = self.catalogs["regression"]
         cache_path = self.settings.resolve_path(self.settings.regression_cache_csv)
+        cache_needs_refresh = False
 
         def _load_epa_dataframe(context: str) -> pd.DataFrame:
             dataset = load_epa_fuel_economy(sample_size=5000, random_state=self.settings.random_state)
@@ -202,7 +221,7 @@ class AnalyticsService:
             return validate_dataframe_records(frame, EPAVehicleSample, strict=False, context=context)
 
         if cache_path.exists():
-            df = pd.read_csv(cache_path)
+            df = read_dataframe_cache(cache_path)
             df = validate_dataframe_records(df, EPAVehicleSample, strict=False, context="regression_cache")
             if df.empty:
                 logger.warning(
@@ -210,8 +229,21 @@ class AnalyticsService:
                     cache_path,
                 )
                 df = _load_epa_dataframe(context="regression_cache_fallback")
+                cache_needs_refresh = True
         else:
             df = _load_epa_dataframe(context="regression_raw")
+            cache_needs_refresh = True
+
+        if cache_needs_refresh:
+            try:
+                write_dataframe_cache(
+                    df,
+                    cache_path,
+                    dataset_name="epa_fuel_economy",
+                    schema_version=REGRESSION_CACHE_SCHEMA_VERSION,
+                )
+            except OSError as exc:
+                logger.warning("Could not persist regression cache to %s: %s", cache_path, exc)
 
         if "comb08" not in df.columns:
             raise ValueError("Regression dataset must include 'comb08' target column")
@@ -272,6 +304,87 @@ class AnalyticsService:
         if runtime is None:
             raise ValueError(f"Unsupported task: {task}")
         return runtime
+
+    @staticmethod
+    def _build_runtime_data_version(runtime: TaskRuntime) -> str:
+        """Build a stable hash representing runtime dataset state."""
+        digest = hashlib.sha256()
+        digest.update(str(runtime.dataframe.shape).encode("utf-8"))
+        digest.update("|".join(runtime.dataframe.columns.astype(str).tolist()).encode("utf-8"))
+
+        preview = runtime.dataframe.head(200)
+        if not preview.empty:
+            row_hashes = pd.util.hash_pandas_object(preview, index=True)
+            digest.update(row_hashes.to_numpy(dtype=np.uint64).tobytes())
+
+        return digest.hexdigest()
+
+    def _training_signature(
+        self,
+        operation: str,
+        task: TaskType,
+        model_name: str,
+        feature_names: List[str],
+        params: Dict[str, Any],
+    ) -> str:
+        payload = {
+            "operation": operation,
+            "task": task,
+            "model": model_name,
+            "features": sorted(set(feature_names)),
+            "params": params,
+            "data_version": self._runtime_data_versions.get(task, "unknown"),
+        }
+        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def _cache_get(self, key: str) -> Optional[Any]:
+        if not self._training_cache_enabled:
+            return None
+        with self._training_cache_lock:
+            if key not in self._training_cache:
+                return None
+
+            # Maintain recency order for lightweight LRU behavior.
+            if key in self._training_cache_order:
+                self._training_cache_order.remove(key)
+            self._training_cache_order.append(key)
+            return copy.deepcopy(self._training_cache[key])
+
+    def _cache_set(self, key: str, value: Any) -> None:
+        if not self._training_cache_enabled:
+            return
+
+        with self._training_cache_lock:
+            self._training_cache[key] = copy.deepcopy(value)
+            if key in self._training_cache_order:
+                self._training_cache_order.remove(key)
+            self._training_cache_order.append(key)
+
+            while len(self._training_cache_order) > self._training_cache_max_entries:
+                evicted = self._training_cache_order.pop(0)
+                self._training_cache.pop(evicted, None)
+
+    def _artifact_dir(self) -> Path:
+        return self.settings.resolve_path("results/model_artifacts")
+
+    def _artifact_file(self, task: TaskType, artifact_id: str) -> Path:
+        return self._artifact_dir() / f"{task}-{artifact_id}.json"
+
+    def _persist_artifact_payload(self, task: TaskType, artifact_id: str, payload: Dict[str, Any]) -> str:
+        artifact_path = self._artifact_file(task, artifact_id)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return str(artifact_path)
+
+    def _load_artifact_payload(self, task: TaskType, artifact_id: str) -> Dict[str, Any]:
+        artifact_path = self._artifact_file(task, artifact_id)
+        if not artifact_path.exists():
+            raise ValueError(f"Artifact '{artifact_id}' not found for task '{task}'.")
+        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"Artifact '{artifact_id}' is invalid.")
+        return payload
 
     @staticmethod
     def _feature_source_summary(task: TaskType, source_type: str) -> str:
@@ -607,6 +720,23 @@ class AnalyticsService:
         self,
         model_name: str,
     ) -> Tuple[ClassificationMetrics, str, Dict[str, Any], str]:
+        signature = self._training_signature(
+            operation="classification_confusion_matrix",
+            task="classification",
+            model_name=model_name,
+            feature_names=[],
+            params={
+                "test_size": self.settings.test_size,
+                "iterations": self.settings.training_history_iterations,
+                "random_state": self.settings.random_state,
+            },
+        )
+        cached = self._cache_get(signature)
+        if cached is not None:
+            logger.info("classification_confusion_matrix_completed model=%s cache_hit=true", model_name)
+            return cached
+
+        start = time.perf_counter()
         runtime = self._runtime("classification")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=ConvergenceWarning)
@@ -624,17 +754,26 @@ class AnalyticsService:
             history,
             title=f"{model_name} - Train/Validation Error by Iteration",
         )
-        return (
+        payload = (
             metrics,
             self.figure_to_data_url(confusion_fig),
             self._history_payload(history),
             self.figure_to_data_url(history_fig),
         )
+        self._cache_set(signature, payload)
+        duration_ms = (time.perf_counter() - start) * 1000.0
+        logger.info(
+            "classification_confusion_matrix_completed model=%s duration_ms=%.2f cache_hit=false",
+            model_name,
+            duration_ms,
+        )
+        return payload
 
     def custom_classification_learning(
         self,
         model_name: str,
         feature_names: List[str],
+        cv_folds: int = 1,
     ) -> Dict[str, Any]:
         unique_features = list(dict.fromkeys(feature_names))
         if not unique_features:
@@ -658,6 +797,37 @@ class AnalyticsService:
 
         train_metrics = evaluate_classifier(trained.model, X_train, y_train, class_names)
         validation_metrics = evaluate_classifier(trained.model, X_test, y_test, class_names)
+
+        cv_metric_name = ""
+        cv_scores: List[float] = []
+        cv_mean: Optional[float] = None
+        cv_std: Optional[float] = None
+        if cv_folds > 1 and len(y_train) >= 4:
+            train_labels = pd.Series(y_train)
+            if not train_labels.empty:
+                min_per_class = int(train_labels.value_counts().min())
+                effective_folds = min(cv_folds, min_per_class)
+                if effective_folds >= 2:
+                    cv_model = self._build_model("classification", model_name)
+                    cv_splitter = StratifiedKFold(
+                        n_splits=effective_folds,
+                        shuffle=True,
+                        random_state=self.settings.random_state,
+                    )
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=ConvergenceWarning)
+                        scores = cross_val_score(
+                            cv_model,
+                            X_train,
+                            y_train,
+                            scoring="f1_weighted",
+                            cv=cv_splitter,
+                            n_jobs=None,
+                        )
+                    cv_metric_name = "f1_weighted"
+                    cv_scores = [round(float(score), 4) for score in scores.tolist()]
+                    cv_mean = round(float(np.mean(scores)), 4)
+                    cv_std = round(float(np.std(scores)), 4)
 
         train_fig = plot_confusion_matrix(train_metrics)
         validation_fig = plot_confusion_matrix(validation_metrics)
@@ -685,6 +855,10 @@ class AnalyticsService:
             "validation_confusion_matrix_url": self.figure_to_data_url(validation_fig),
             "error_plot_url": self.figure_to_data_url(history_fig),
             "training_history": self._history_payload(trained.history),
+            "cv_metric_name": cv_metric_name,
+            "cv_scores": cv_scores,
+            "cv_mean": cv_mean,
+            "cv_std": cv_std,
         }
 
     def _regression_split_for_features(
@@ -727,6 +901,7 @@ class AnalyticsService:
         self,
         model_name: str,
         feature_names: List[str],
+        cv_folds: int = 1,
     ) -> Dict[str, Any]:
         unique_features = list(dict.fromkeys(feature_names))
         if not unique_features:
@@ -751,6 +926,34 @@ class AnalyticsService:
         train_metrics = evaluate_regressor(trained.model, X_train, y_train)
         validation_metrics = evaluate_regressor(trained.model, X_test, y_test)
         validation_pred = trained.model.predict(X_test)
+
+        cv_metric_name = ""
+        cv_scores: List[float] = []
+        cv_mean: Optional[float] = None
+        cv_std: Optional[float] = None
+        if cv_folds > 1 and len(y_train) >= 4:
+            effective_folds = min(cv_folds, len(y_train))
+            if effective_folds >= 2:
+                cv_model = self._build_model("regression", model_name)
+                cv_splitter = KFold(
+                    n_splits=effective_folds,
+                    shuffle=True,
+                    random_state=self.settings.random_state,
+                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=ConvergenceWarning)
+                    scores = cross_val_score(
+                        cv_model,
+                        X_train,
+                        y_train,
+                        scoring="r2",
+                        cv=cv_splitter,
+                        n_jobs=None,
+                    )
+                cv_metric_name = "r2"
+                cv_scores = [round(float(score), 4) for score in scores.tolist()]
+                cv_mean = round(float(np.mean(scores)), 4)
+                cv_std = round(float(np.std(scores)), 4)
 
         diagnostics_fig = plot_residual_analysis(
             y_test,
@@ -782,17 +985,117 @@ class AnalyticsService:
             "validation_diagnostics_plot_url": self.figure_to_data_url(diagnostics_fig),
             "error_plot_url": self.figure_to_data_url(history_fig),
             "training_history": self._history_payload(trained.history),
+            "cv_metric_name": cv_metric_name,
+            "cv_scores": cv_scores,
+            "cv_mean": cv_mean,
+            "cv_std": cv_std,
         }
 
-    def custom_learning(self, task: TaskType, model_name: str, feature_names: List[str]) -> Dict[str, Any]:
+    def custom_learning(
+        self,
+        task: TaskType,
+        model_name: str,
+        feature_names: List[str],
+        cv_folds: int = 1,
+        persist_artifact: bool = False,
+        artifact_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if artifact_id:
+            payload = self._load_artifact_payload(task, artifact_id)
+            payload["artifact_id"] = artifact_id
+            payload["artifact_saved"] = True
+            payload["artifact_path"] = str(self._artifact_file(task, artifact_id))
+            logger.info(
+                "custom_learning_loaded_artifact task=%s model=%s artifact_id=%s",
+                task,
+                model_name,
+                artifact_id,
+            )
+            return payload
+
+        signature = self._training_signature(
+            operation="custom_learning",
+            task=task,
+            model_name=model_name,
+            feature_names=feature_names,
+            params={
+                "cv_folds": cv_folds,
+                "persist_artifact": persist_artifact,
+                "test_size": self.settings.test_size,
+                "iterations": self.settings.training_history_iterations,
+                "random_state": self.settings.random_state,
+            },
+        )
+        cached = self._cache_get(signature)
+        if cached is not None:
+            logger.info(
+                "custom_learning_completed task=%s model=%s features=%d cv_folds=%d cache_hit=true",
+                task,
+                model_name,
+                len(feature_names),
+                cv_folds,
+            )
+            return cached
+
+        start = time.perf_counter()
         if task == "classification":
-            return self.custom_classification_learning(model_name=model_name, feature_names=feature_names)
-        return self.custom_regression_learning(model_name=model_name, feature_names=feature_names)
+            payload = self.custom_classification_learning(
+                model_name=model_name,
+                feature_names=feature_names,
+                cv_folds=cv_folds,
+            )
+        else:
+            payload = self.custom_regression_learning(
+                model_name=model_name,
+                feature_names=feature_names,
+                cv_folds=cv_folds,
+            )
+
+        payload.setdefault("artifact_id", "")
+        payload.setdefault("artifact_saved", False)
+        payload.setdefault("artifact_path", "")
+
+        if persist_artifact:
+            artifact_id = signature[:16]
+            artifact_path = self._persist_artifact_payload(task, artifact_id, payload)
+            payload["artifact_id"] = artifact_id
+            payload["artifact_saved"] = True
+            payload["artifact_path"] = artifact_path
+
+        self._cache_set(signature, payload)
+        duration_ms = (time.perf_counter() - start) * 1000.0
+        logger.info(
+            "custom_learning_completed task=%s model=%s features=%d cv_folds=%d duration_ms=%.2f cache_hit=false artifact_saved=%s",
+            task,
+            model_name,
+            len(feature_names),
+            cv_folds,
+            duration_ms,
+            bool(payload.get("artifact_saved")),
+        )
+        return payload
 
     def regression_diagnostics(
         self,
         model_name: str,
     ) -> Tuple[RegressionMetrics, str, str, Dict[str, Any], str]:
+        signature = self._training_signature(
+            operation="regression_diagnostics",
+            task="regression",
+            model_name=model_name,
+            feature_names=[],
+            params={
+                "test_size": self.settings.test_size,
+                "iterations": self.settings.training_history_iterations,
+                "random_state": self.settings.random_state,
+            },
+        )
+        cached = self._cache_get(signature)
+        if cached is not None:
+            logger.info("regression_diagnostics_completed model=%s cache_hit=true", model_name)
+            return cached
+
+        start = time.perf_counter()
         runtime = self._runtime("regression")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=ConvergenceWarning)
@@ -814,13 +1117,21 @@ class AnalyticsService:
         explanation = (
             f"{model_name} regression diagnostics: R2={metrics.r2:.4f}, RMSE={metrics.rmse:.4f}, MAE={metrics.mae:.4f}."
         )
-        return (
+        payload = (
             metrics,
             explanation,
             self.figure_to_data_url(diagnostics_fig),
             self._history_payload(history),
             self.figure_to_data_url(history_fig),
         )
+        self._cache_set(signature, payload)
+        duration_ms = (time.perf_counter() - start) * 1000.0
+        logger.info(
+            "regression_diagnostics_completed model=%s duration_ms=%.2f cache_hit=false",
+            model_name,
+            duration_ms,
+        )
+        return payload
 
     def compare_models(self, task: TaskType) -> Tuple[List[Dict[str, Any]], str, str, str]:
         runtime = self._runtime(task)

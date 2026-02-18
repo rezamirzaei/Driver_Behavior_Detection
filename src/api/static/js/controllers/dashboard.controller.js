@@ -5,9 +5,9 @@
         .module("abaxDashboard")
         .controller("DashboardController", DashboardController);
 
-    DashboardController.$inject = ["ApiService"];
+    DashboardController.$inject = ["$interval", "ApiService"];
 
-    function DashboardController(ApiService) {
+    function DashboardController($interval, ApiService) {
         var vm = this;
 
         vm.tasks = [
@@ -29,10 +29,21 @@
         vm.featureSelection = null;
         vm.featurePair = { first: null, second: null };
         vm.modelSelection = null;
-        vm.customLearning = { selectedFeatures: [], modelSelection: null };
+        vm.customLearning = {
+            selectedFeatures: [],
+            modelSelection: null,
+            cvFolds: 1,
+            featureQuery: "",
+            persistArtifact: false,
+            artifactId: ""
+        };
+        vm.availableCvFolds = [1, 3, 5];
         vm.selectedFeatureInfo = null;
         vm.selectedModelInfo = null;
         vm.customSelectedFeatureInfo = [];
+        vm.customJobId = null;
+        vm.customJobStatus = null;
+        vm.customLearningPollPromise = null;
 
         vm.loading = {
             metadata: false,
@@ -77,6 +88,7 @@
         vm.onModelChange = onModelChange;
         vm.onCustomFeatureChange = onCustomFeatureChange;
         vm.selectCustomFeatures = selectCustomFeatures;
+        vm.customFeatureFilter = customFeatureFilter;
         vm.renderCell = renderCell;
         vm.runCustomLearning = runCustomLearning;
 
@@ -99,6 +111,9 @@
             vm.customSelectedFeatureInfo = [];
             vm.featureLookup = {};
             vm.modelLookup = {};
+            vm.customJobId = null;
+            vm.customJobStatus = null;
+            stopCustomJobPolling();
 
             vm.errors.feature = null;
             vm.errors.pair = null;
@@ -134,6 +149,10 @@
                     onFeatureChange();
                     onModelChange();
                     vm.customLearning.modelSelection = vm.modelSelection;
+                    vm.customLearning.cvFolds = 1;
+                    vm.customLearning.featureQuery = "";
+                    vm.customLearning.persistArtifact = false;
+                    vm.customLearning.artifactId = "";
                     selectCustomFeatures(vm.numericFeatures.length ? "numeric" : "all");
                     onCustomFeatureChange();
 
@@ -194,6 +213,53 @@
                 return feature.name;
             });
             onCustomFeatureChange();
+        }
+
+        function customFeatureFilter(feature) {
+            if (!vm.customLearning.featureQuery) {
+                return true;
+            }
+            var query = vm.customLearning.featureQuery.toLowerCase();
+            var haystack = [feature.name, feature.description, feature.source_type, feature.source_summary]
+                .join(" ")
+                .toLowerCase();
+            return haystack.indexOf(query) !== -1;
+        }
+
+        function stopCustomJobPolling() {
+            if (vm.customLearningPollPromise) {
+                $interval.cancel(vm.customLearningPollPromise);
+                vm.customLearningPollPromise = null;
+            }
+        }
+
+        function pollCustomJob() {
+            stopCustomJobPolling();
+            vm.customLearningPollPromise = $interval(function () {
+                ApiService.getJobStatus(vm.customJobId)
+                    .then(function (response) {
+                        var payload = response.data || {};
+                        vm.customJobStatus = payload.status || "running";
+
+                        if (payload.status === "completed") {
+                            vm.results.custom = payload.result || null;
+                            if (vm.results.custom && vm.results.custom.selected_features) {
+                                vm.customSelectedFeatureInfo = vm.results.custom.selected_features;
+                            }
+                            vm.loading.custom = false;
+                            stopCustomJobPolling();
+                        } else if (payload.status === "failed") {
+                            vm.errors.custom = payload.error || "Custom learning job failed.";
+                            vm.loading.custom = false;
+                            stopCustomJobPolling();
+                        }
+                    })
+                    .catch(function (error) {
+                        vm.errors.custom = parseError(error, "Job polling failed.");
+                        vm.loading.custom = false;
+                        stopCustomJobPolling();
+                    });
+            }, 1000);
         }
 
         function runFeatureAnalysis() {
@@ -330,7 +396,8 @@
                 vm.errors.custom = "Select a model for custom learning.";
                 return;
             }
-            if (!vm.customLearning.selectedFeatures || vm.customLearning.selectedFeatures.length === 0) {
+            var hasArtifact = !!(vm.customLearning.artifactId && vm.customLearning.artifactId.trim());
+            if (!hasArtifact && (!vm.customLearning.selectedFeatures || vm.customLearning.selectedFeatures.length === 0)) {
                 vm.errors.custom = "Select at least one feature.";
                 return;
             }
@@ -339,21 +406,24 @@
             vm.errors.custom = null;
             vm.results.custom = null;
 
-            ApiService.runCustomLearning({
+            ApiService.startCustomLearningJob({
                 task: vm.task,
                 model_name: vm.customLearning.modelSelection,
-                feature_names: vm.customLearning.selectedFeatures
+                feature_names: vm.customLearning.selectedFeatures,
+                cv_folds: vm.customLearning.cvFolds,
+                persist_artifact: vm.customLearning.persistArtifact,
+                artifact_id: vm.customLearning.artifactId || null
             })
                 .then(function (response) {
-                    vm.results.custom = response.data;
-                    vm.customSelectedFeatureInfo = response.data.selected_features || vm.customSelectedFeatureInfo;
+                    vm.customJobId = response.data.job_id;
+                    vm.customJobStatus = response.data.status;
+                    pollCustomJob();
                 })
                 .catch(function (error) {
                     vm.errors.custom = parseError(error, "Custom learning run failed.");
-                })
-                .finally(function () {
                     vm.loading.custom = false;
-                });
+                })
+                ;
         }
 
         function parseError(error, fallback) {

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, cast
 import numpy as np
 import pandas as pd
 
+from src.data.cache_io import read_dataframe_cache, write_dataframe_cache
 from src.data.event_counts import (
     ACCEL_THRESHOLD,
     BRAKE_THRESHOLD,
@@ -33,6 +34,9 @@ from src.data.validation import validate_dataframe_records, validate_record
 
 class TripInfo(TripInfoSample):
     """Container for trip metadata."""
+
+
+CLASSIFICATION_CACHE_SCHEMA_VERSION = "2.1.0"
 
 
 def get_all_trips(data_dir: Path) -> List[TripInfo]:
@@ -302,7 +306,7 @@ def load_or_build_dataset(
     """
     if cache_path and cache_path.exists() and not force_rebuild:
         print(f"📂 Loading cached dataset: {cache_path}")
-        df = pd.read_csv(cache_path)
+        df = read_dataframe_cache(cache_path)
         # Normalize behavior names (NORMAL1, NORMAL2 -> NORMAL)
         if "behavior" in df.columns:
             df["behavior"] = df["behavior"].apply(
@@ -316,8 +320,12 @@ def load_or_build_dataset(
 
     if cache_path:
         try:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(cache_path, index=False)
+            write_dataframe_cache(
+                df,
+                cache_path,
+                dataset_name="uah_raw_features",
+                schema_version=CLASSIFICATION_CACHE_SCHEMA_VERSION,
+            )
             print(f"💾 Saved to: {cache_path}")
         except OSError as exc:
             print(f"⚠️ Could not write cache to {cache_path}: {exc}. Continuing without cache persistence.")

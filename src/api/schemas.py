@@ -123,7 +123,10 @@ class CustomLearningRequest(BaseModel):
 
     task: TaskType = "classification"
     model_name: str = Field(min_length=1)
-    feature_names: List[str] = Field(min_length=1)
+    feature_names: List[str] = Field(default_factory=list)
+    cv_folds: int = Field(default=1, ge=1, le=10)
+    persist_artifact: bool = False
+    artifact_id: Optional[str] = None
 
     @field_validator("model_name")
     @classmethod
@@ -134,8 +137,6 @@ class CustomLearningRequest(BaseModel):
     @classmethod
     def normalize_feature_names(cls, values: List[str]) -> List[str]:
         cleaned = [value.strip() for value in values if value and value.strip()]
-        if not cleaned:
-            raise ValueError("At least one feature must be selected.")
         if len(set(cleaned)) != len(cleaned):
             raise ValueError("feature_names must not contain duplicates.")
         return cleaned
@@ -145,6 +146,9 @@ class CustomLearningRequest(BaseModel):
         allowed_models = ALLOWED_MODELS_BY_TASK[self.task]
         if self.model_name not in allowed_models:
             raise ValueError(f"Model '{self.model_name}' is not valid for task '{self.task}'.")
+
+        if not self.feature_names and not self.artifact_id:
+            raise ValueError("At least one feature must be selected when artifact_id is not provided.")
 
         allowed_features = ALLOWED_FEATURES_BY_TASK[self.task]
         invalid_features = [name for name in self.feature_names if name not in allowed_features]
@@ -301,6 +305,38 @@ class CustomLearningResponse(BaseModel):
     validation_diagnostics_plot_url: str = ""
     error_plot_url: str = ""
     training_history: TrainingHistoryPayload = Field(default_factory=TrainingHistoryPayload)
+    cv_metric_name: str = ""
+    cv_scores: List[float] = Field(default_factory=list)
+    cv_mean: Optional[float] = None
+    cv_std: Optional[float] = None
+    artifact_id: str = ""
+    artifact_saved: bool = False
+    artifact_path: str = ""
+
+
+class JobStartResponse(BaseModel):
+    """Response for creating an asynchronous job."""
+
+    job_id: str
+    status: Literal["pending", "running"]
+
+
+class JobStatusResponse(BaseModel):
+    """Response for job polling endpoint."""
+
+    job_id: str
+    status: Literal["pending", "running", "completed", "failed"]
+    created_at: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class DataVersionResponse(BaseModel):
+    """Response for data-version manifest endpoint."""
+
+    versions: Dict[str, str]
 
 
 class ModelComparisonResponse(BaseModel):

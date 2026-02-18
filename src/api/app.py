@@ -5,17 +5,19 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
+import time
 from typing import Any, Dict, Optional
 
 import matplotlib
 
 matplotlib.use("Agg")
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.config import get_settings
+from src.api.job_manager import JobManager
 from src.api.schemas import (
     ConfusionMatrixRequest,
     ConfusionMatrixResponse,
@@ -23,11 +25,14 @@ from src.api.schemas import (
     CorrelationPair,
     CustomLearningRequest,
     CustomLearningResponse,
+    DataVersionResponse,
     FeatureInfo,
     FeatureListResponse,
     FeatureRequest,
     FeatureResponse,
     HealthResponse,
+    JobStartResponse,
+    JobStatusResponse,
     ModelComparisonResponse,
     ModelInfo,
     ModelsResponse,
@@ -40,25 +45,29 @@ from src.api.schemas import (
     TwoFeatureResponse,
 )
 from src.api.services import AnalyticsService, build_service
+from src.data.versioning import build_data_manifest
 
 logger = logging.getLogger(__name__)
 
 _service: Optional[AnalyticsService] = None
+_job_manager: Optional[JobManager] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize runtime service during startup."""
     del app
-    global _service
+    global _job_manager, _service
 
     settings = get_settings()
     try:
         _service = build_service(settings)
+        _job_manager = JobManager(max_workers=settings.async_job_workers)
         logger.info("API service initialized")
     except Exception:  # pragma: no cover - startup should fail loudly in runtime
         logger.exception("Failed to initialize analytics service")
         _service = None
+        _job_manager = None
 
     yield
 
@@ -69,6 +78,23 @@ app = FastAPI(
     description="Task-aware analytics API for UAH classification and EPA regression workflows.",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def request_timing_middleware(request: Request, call_next):
+    """Emit request timing metrics for observability."""
+    started = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    logger.info(
+        "request_completed method=%s path=%s status=%s duration_ms=%.2f",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed_ms,
+    )
+    response.headers["X-Process-Time-ms"] = f"{elapsed_ms:.2f}"
+    return response
 
 settings = get_settings()
 app.add_middleware(
@@ -91,11 +117,29 @@ def require_service() -> AnalyticsService:
     return _service
 
 
+def require_job_manager() -> JobManager:
+    """Return initialized job manager or raise HTTP 503."""
+    if _job_manager is None:
+        raise HTTPException(status_code=503, detail="Job manager is not initialized")
+    return _job_manager
+
+
 @app.get("/api/health", response_model=HealthResponse)
 def health_check(service: AnalyticsService = Depends(require_service)) -> HealthResponse:
     """Health endpoint."""
     tasks_loaded: Dict[str, bool] = {task: task in service.runtimes for task in ["classification", "regression"]}
     return HealthResponse(status="ok", version=settings.app_version, tasks_loaded=tasks_loaded)
+
+
+@app.get("/api/data/version", response_model=DataVersionResponse)
+def data_versions() -> DataVersionResponse:
+    """Return lightweight dataset version hashes for reproducibility checks."""
+    roots = {
+        "classification_raw": settings.resolve_path(settings.classification_raw_dir),
+        "processed": settings.resolve_path("data/processed"),
+    }
+    versions = build_data_manifest(roots)
+    return DataVersionResponse(versions=versions)
 
 
 @app.get("/api/metadata", response_model=TaskMetadataResponse)
@@ -252,8 +296,39 @@ def run_custom_learning(
         task=request.task,
         model_name=request.model_name,
         feature_names=request.feature_names,
+        cv_folds=request.cv_folds,
+        persist_artifact=request.persist_artifact,
+        artifact_id=request.artifact_id,
     )
     return CustomLearningResponse(**payload)
+
+
+@app.post("/api/model/custom-learning/job", response_model=JobStartResponse)
+def run_custom_learning_job(
+    request: CustomLearningRequest,
+    service: AnalyticsService = Depends(require_service),
+    job_manager: JobManager = Depends(require_job_manager),
+) -> JobStartResponse:
+    """Queue custom learning run as background job and return job id."""
+    record = job_manager.submit(
+        service.custom_learning,
+        task=request.task,
+        model_name=request.model_name,
+        feature_names=request.feature_names,
+        cv_folds=request.cv_folds,
+        persist_artifact=request.persist_artifact,
+        artifact_id=request.artifact_id,
+    )
+    return JobStartResponse(job_id=record.job_id, status="running" if record.status == "running" else "pending")
+
+
+@app.get("/api/jobs/{job_id}", response_model=JobStatusResponse)
+def get_job_status(job_id: str, job_manager: JobManager = Depends(require_job_manager)) -> JobStatusResponse:
+    """Poll one asynchronous job state."""
+    record = job_manager.get(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    return JobStatusResponse(**record.to_payload())
 
 
 @app.get("/api/model/compare", response_model=ModelComparisonResponse)

@@ -1,5 +1,12 @@
 """Data module exports."""
 
+from src.data.cache_io import (
+    cache_metadata_path,
+    detect_cache_format,
+    read_cache_metadata,
+    read_dataframe_cache,
+    write_dataframe_cache,
+)
 from src.data.epa_loader import EPADataLoader, load_epa_fuel_economy
 from src.data.event_counts import (
     ACCEL_THRESHOLD,
@@ -35,12 +42,22 @@ from src.data.sample_models import (
 from src.data.splitter import split_by_driver, split_data
 from src.data.uah_loader import UAHDataLoader, load_uah_driveset
 from src.data.validation import validate_dataframe_records, validate_record, validate_records
+from src.data.versioning import build_data_manifest, compute_tree_version, read_data_manifest, write_data_manifest
 
 __all__ = [
     "UAHDataLoader",
     "load_uah_driveset",
     "EPADataLoader",
     "load_epa_fuel_economy",
+    "detect_cache_format",
+    "cache_metadata_path",
+    "read_dataframe_cache",
+    "write_dataframe_cache",
+    "read_cache_metadata",
+    "compute_tree_version",
+    "build_data_manifest",
+    "write_data_manifest",
+    "read_data_manifest",
     "split_data",
     "split_by_driver",
     # Raw data utilities
