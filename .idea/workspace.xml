@@ -138,7 +138,7 @@
       <workItem from="1770404065957" duration="1261000" />
       <workItem from="1771353980598" duration="1232000" />
       <workItem from="1771357643237" duration="7241000" />
-      <workItem from="1771371031559" duration="13594000" />
+      <workItem from="1771371031559" duration="13923000" />
     </task>
     <task id="LOCAL-00001" summary="first commit, classification for UAH data and regression for EDA data">
       <option name="closed" value="true" />
@@ -332,7 +332,15 @@
       <option name="project" value="LOCAL" />
       <updated>1771387094157</updated>
     </task>
-    <option name="localTasksCounter" value="25" />
+    <task id="LOCAL-00025" summary="chore: stabilize pre-commit hooks and apply formatting cleanups">
+      <option name="closed" value="true" />
+      <created>1771387309312</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1771387309312</updated>
+    </task>
+    <option name="localTasksCounter" value="26" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
